@@ -1,7 +1,7 @@
 from pydantic import BaseModel, HttpUrl
 from typing import Optional, List
 from pydantic import BaseModel
-from .insight import InsightResponse
+from .insight import InsightSimpleResponse
 from .recommendation import RecommendationResponse
 from .sales_strategy import SalesStrategyResponse
 
@@ -39,7 +39,7 @@ class AnalysisFullResponse(BaseModel):
     status: str
     strategic_score: Optional[float]
     propensity_score: Optional[float]
-    insights: List[InsightResponse]
+    insights: List[InsightSimpleResponse]
     recommendations: List[RecommendationResponse]
     sales_strategy: Optional[SalesStrategyResponse]
 

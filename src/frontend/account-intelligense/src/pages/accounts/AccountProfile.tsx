@@ -1,227 +1,264 @@
+import { useState, useEffect, useRef } from "react";
+import type { Dispatch, SetStateAction, RefObject } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  useEffect,
-  useRef,
-  useState,
-  type Dispatch,
-  type RefObject,
-  type SetStateAction,
-} from "react";
-import AppShell from "../../components/layout/AppShell";
-import { fetchWithAuth } from "../../services/api";
-import {
-  Search,
-  Plus,
-  ArrowUp,
-  ChevronDown,
-  MoreHorizontal,
-  Zap,
-  Check,
   PanelLeft,
   PanelRight,
+  Plus,
+  Zap,
+  Trash2,
+  ArrowUp,
+  ExternalLink,
+  Copy,
+  Send,
+  Check,
+  RefreshCw,
+  Lightbulb,
 } from "lucide-react";
+import AppShell from "../../components/layout/AppShell";
+import { fetchWithAuth } from "../../services/api";
 
 /* ===================== TYPES ===================== */
 
-type Message = {
+type InputSource = "main" | "additional" | null;
+type AnalysisStatus = "running" | "completed" | "failed";
+type ChatStage = "input" | "analysis_progress" | "recommendations" | "commercial_progress" | "commercial";
+
+interface Message {
   id: string;
   role: "user" | "assistant";
   text: string;
   tsISO: string;
-};
+}
 
-type ChatItem = {
+interface RecommendationCardUI {
+  id: number;          // recommendation id
+  productId: number;
+  title: string;
+  need: string;        // reasoning from backend
+  matchPercentage: number;
+  confidenceScore: number;
+  isAccepted: boolean;
+}
+
+interface CommercialFocusCard {
+  id: string;
+  title: string;
+  subtitle: string;
+}
+
+interface CommercialPack {
+  companyName: string;
+  problem: string;
+  solution: string;
+  strategicMatchPct: number;
+  howToStart: string;
+  tone: string;
+  emphasize: string;
+  avoid: string;
+  speechText: string;
+  speechWordCount: number;
+  versionLabel: string;
+  strategicData: CommercialFocusCard[];
+}
+
+interface ChatItem {
   id: string;
   companyName: string;
   domain: string;
-  whenISO: string; // última actividad
+  whenISO: string;
   initial: string;
   color: string;
   analysisType: string;
-  source: "main" | "additional";
+  source: InputSource;
   url?: string;
-  companyNameExtra?: string;
-  industry?: string;
+  industryLabel?: string;
+  industryId?: number;
   messages: Message[];
-};
 
-type InputSource = "main" | "additional" | null;
+  // feature/ai-engine-merged additions
+  analysisStatus?: AnalysisStatus;
+  analysisProgress?: number;
+  analysisProgressLabel?: string;
+  stage?: ChatStage;
+  insights?: string;
+  recommendationCards?: RecommendationCardUI[];
+  noInsights?: boolean; // true if analysis completed but found no data
+  loadingRecommendations?: boolean;
+  selectedRecommendationIds?: number[];
+  commercialProgress?: number;
+  commercialProgressLabel?: string;
+  commercialPack?: CommercialPack;
+}
 
 /* ===================== HELPERS ===================== */
 
-function uid() {
-  return (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}_${Math.random()}`) as string;
-}
+const uid = () => Math.random().toString(36).substring(2, 11);
 
-function validateUrl(raw: string): { ok: boolean; normalized?: string; error?: string } {
-  const v = raw.trim();
-  if (!v) return { ok: false, error: "Ingresa una URL válida." };
-
-  const withScheme = /^https?:\/\//i.test(v) ? v : `https://${v}`;
-
+const validateUrl = (val: string) => {
+  if (!val) return { ok: false };
+  let test = val.trim().toLowerCase();
+  if (!test.includes(".")) return { ok: false, error: "Falta el dominio (ej. .com)." };
+  if (!test.startsWith("http")) test = "https://" + test;
   try {
-    const u = new URL(withScheme);
-
-    if (u.protocol !== "http:" && u.protocol !== "https:") {
-      return { ok: false, error: "Solo se permiten URLs http o https." };
-    }
-
-    const host = u.hostname ?? "";
-    if (!host.includes(".") || host.startsWith(".") || host.endsWith(".")) {
-      return { ok: false, error: "La URL debe incluir un dominio válido (ej. empresa.com)." };
-    }
-
-    if (/\s/.test(v)) return { ok: false, error: "La URL no puede contener espacios." };
-
-    return { ok: true, normalized: u.toString() };
+    const url = new URL(test);
+    return { ok: true, normalized: url.toString() };
   } catch {
-    return { ok: false, error: "Eso no parece una URL válida. Ej: https://empresa.com" };
+    return { ok: false, error: "Formato no válido." };
   }
-}
+};
 
-function extractCompanyFromUrl(normalizedUrl: string) {
-  const u = new URL(normalizedUrl);
-  const host = u.hostname.replace(/^www\./i, "");
-  const first = host.split(".")[0] || host;
+const extractDomain = (url: string) => {
+  try {
+    const { hostname } = new URL(url);
+    return hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+};
 
-  const pretty = first.replace(/[-_]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
 
-  return { companyName: pretty, domain: host };
-}
 
-function truncateIfUrl(text: string, max = 90) {
-  const t = text.trim();
-  const looksLikeUrl = /^https?:\/\//i.test(t) || /^[\w-]+\.[a-z]{2,}/i.test(t);
-  if (!looksLikeUrl) return text;
-  if (t.length <= max) return t;
-  return t.slice(0, max) + "…";
-}
-
-function formatWhen(whenISO: string) {
-  const d = new Date(whenISO);
+const formatWhen = (iso: string) => {
+  if (!iso) return "";
+  const d = new Date(iso);
   const now = new Date();
-  const ms = now.getTime() - d.getTime();
-  const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+  const diff = now.getTime() - d.getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "Reciente";
+  if (minutes < 60) return `Hace ${minutes}m`;
+  if (minutes < 1440) return `Hace ${Math.floor(minutes / 60)}h`;
+  return d.toLocaleDateString();
+};
 
-  if (days <= 0) return "Hoy";
-  if (days === 1) return "1 día";
-  if (days < 30) return `${days} días`;
-
-  const months = Math.floor(days / 30);
-  if (months === 1) return "1 mes";
-  return `${months} meses`;
-}
-
-function pickColorFromString(input: string) {
+const pickColorFromString = (str: string) => {
   const colors = [
-    "bg-black",
-    "bg-red-600",
     "bg-blue-600",
-    "bg-orange-600",
     "bg-emerald-600",
-    "bg-purple-600",
-    "bg-sky-600",
-    "bg-pink-600",
+    "bg-indigo-600",
+    "bg-violet-600",
+    "bg-rose-600",
+    "bg-amber-600",
+    "bg-slate-700",
   ];
-
   let hash = 0;
-  for (let i = 0; i < input.length; i++) hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
-  return colors[hash % colors.length];
+  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  return colors[Math.abs(hash) % colors.length];
+};
+
+const countWords = (text: string) => (text ? text.trim().split(/\s+/).length : 0);
+
+const INDUSTRY_ID_MAP = {
+  Tecnología: 1,
+  Finanzas: 2,
+  Retail: 3,
+  Manufactura: 4,
+  Logística: 5,
+  Salud: 6,
+  Educación: 7,
+  Gobierno: 8,
+  "E-commerce": 9,
+};
+
+function getIndustryId(label: string): number {
+  return (INDUSTRY_ID_MAP as any)[label] ?? 1;
 }
 
-/* ===================== MAIN ===================== */
+
+
+/* ===================== MAIN COMPONENT ===================== */
 
 export default function AccountProfile() {
+  const navigate = useNavigate();
+
   const [query, setQuery] = useState("");
   const [popupOpen, setPopupOpen] = useState(false);
   const [analysisType, setAnalysisType] = useState("Análisis Completo");
 
-  // ✅ Info adicional
   const [extraCompanyName, setExtraCompanyName] = useState("");
   const [extraIndustry, setExtraIndustry] = useState("");
-
-  // ✅ Exclusividad (pero con switch)
   const [inputSource, setInputSource] = useState<InputSource>(null);
-
-  // ✅ Error del campo principal (URL)
   const [urlError, setUrlError] = useState<string | null>(null);
 
-  // ✅ Minimizar sidebar
-  const SIDEBAR_KEY = "hpe_profile360_sidebar_collapsed_v2";
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
-      return localStorage.getItem(SIDEBAR_KEY) === "1";
+      return localStorage.getItem("hpe_sidebar_collapsed") === "1";
     } catch {
       return false;
     }
   });
 
   useEffect(() => {
-    try {
-      localStorage.setItem(SIDEBAR_KEY, sidebarCollapsed ? "1" : "0");
-    } catch {
-      // ignore
-    }
+    localStorage.setItem("hpe_sidebar_collapsed", sidebarCollapsed ? "1" : "0");
   }, [sidebarCollapsed]);
 
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [loadingChats, setLoadingChats] = useState(true);
 
   const activeChat = chats.find((c) => c.id === activeChatId) ?? null;
 
+  // Persistence for chats (fallback)
   useEffect(() => {
-    async function loadChats() {
+    const saved = localStorage.getItem("hpe_chats_v3");
+    if (saved) {
+      try { setChats(JSON.parse(saved)); } catch { }
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("hpe_chats_v3", JSON.stringify(chats));
+  }, [chats]);
+
+  // Load from Backend (Real merge)
+  useEffect(() => {
+    async function fetchHistory() {
       try {
         const res = await fetchWithAuth("/analysis/");
         if (res.ok) {
           const data = await res.json();
-          // Transform backend AnalysisListItem to frontend ChatItem
-          const transformed: ChatItem[] = data.map((a: any) => ({
+          const DONE_STATUSES = ["analysis_completed", "completed"];
+          const mapped: ChatItem[] = data.map((a: any) => ({
             id: a.analysis_id.toString(),
             companyName: a.company_name,
             domain: "",
-            whenISO: new Date().toISOString(), // The backend doesn't return created_at in ListItem yet, but we can assume fresh
-            initial: (a.company_name[0] || "?").toUpperCase(),
+            whenISO: new Date().toISOString(),
+            initial: (a.company_name?.[0] || "?").toUpperCase(),
             color: pickColorFromString(a.company_name),
-            analysisType: "Análisis Completo",
-            source: "main",
-            messages: [
-              {
-                id: "welcome",
-                role: "assistant",
-                text: `Análisis de ${a.company_name} - Estado: ${a.status}.${a.strategic_score ? ` Score Estratégico: ${a.strategic_score}%` : ""}`,
-                tsISO: new Date().toISOString()
-              }
-            ]
+            analysisType: "An\u00e1lisis Completo",
+            source: "main" as InputSource,
+            stage: DONE_STATUSES.includes(a.status) ? "recommendations" : "analysis_progress",
+            analysisStatus: DONE_STATUSES.includes(a.status) ? "completed" : "running",
+            analysisProgress: DONE_STATUSES.includes(a.status) ? 100 : 0,
+            messages: [{ id: uid(), role: "assistant" as "assistant", text: `An\u00e1lisis cargado (${a.status})`, tsISO: new Date().toISOString() }],
+            recommendationCards: [],
           }));
-          setChats(transformed);
+          if (mapped.length > 0) {
+            setChats(mapped);
+            // Auto-load full data for completed analyses
+            mapped
+              .filter(c => DONE_STATUSES.includes(
+                data.find((d: any) => d.analysis_id.toString() === c.id)?.status
+              ))
+              .forEach(c => fetchFullAnalysis(c.id));
+          }
         }
       } catch (err) {
-        console.error("Error loading chats:", err);
-      } finally {
-        setLoadingChats(false);
+        console.error("History fetch error:", err);
       }
     }
-    loadChats();
+    fetchHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // No-op for persistence since we use backend
-  useEffect(() => { }, [chats]);
-  useEffect(() => { }, [activeChatId]);
 
   const popupRef = useRef<HTMLDivElement | null>(null);
   const plusBtnRef = useRef<HTMLButtonElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const companyRef = useRef<HTMLInputElement | null>(null);
 
-  const composerDocked = !!activeChatId;
-
   const mainValue = query.trim();
   const additionalHasValue = extraCompanyName.trim().length > 0 || extraIndustry.trim().length > 0;
-
   const mainLocked = inputSource === "additional";
   const additionalLocked = inputSource === "main";
-
   const mainValidation = mainValue ? validateUrl(mainValue) : { ok: false };
 
   const canSend =
@@ -253,372 +290,493 @@ export default function AccountProfile() {
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
-  // close popup outside
-  useEffect(() => {
-    function onDown(e: MouseEvent) {
-      if (!popupOpen) return;
+  async function pollAnalysisProgress(chatId: string) {
+    const poll = async () => {
+      try {
+        const res = await fetchWithAuth(`/analysis/${chatId}/progress`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const { status, progress_percentage } = data;
 
-      const p = popupRef.current;
-      const b = plusBtnRef.current;
-      const target = e.target as Node;
+        // Terminal statuses: stop polling and fetch full data
+        const TERMINAL = ["analysis_completed", "completed", "failed"];
 
-      if (p && p.contains(target)) return;
-      if (b && b.contains(target)) return;
+        setChats((prev) =>
+          prev.map((c) =>
+            c.id === chatId
+              ? {
+                ...c,
+                analysisStatus: (TERMINAL.includes(status) ? "completed" : "running") as AnalysisStatus,
+                analysisProgress: progress_percentage,
+                analysisProgressLabel: getLabelFromStatus(status),
+                stage: TERMINAL.includes(status) ? "recommendations" : "analysis_progress",
+              }
+              : c
+          )
+        );
 
-      setPopupOpen(false);
+        if (TERMINAL.includes(status)) {
+          if (status !== "failed") fetchFullAnalysis(chatId);
+          return; // Stop polling
+        }
+
+        setTimeout(poll, 1000);
+      } catch (err) {
+        console.error("Polling error:", err);
+      }
+    };
+    poll();
+  }
+
+  function getLabelFromStatus(status: string) {
+    const map: any = {
+      researching: "Investigando cuenta...",
+      insight_processing: "Extrayendo insights estratégicos...",
+      recommending: "Generando recomendaciones HPE...",
+      analysis_completed: "Análisis listo.",
+      strategy_generating: "Generando estrategia de venta...",
+      completed: "Proceso finalizado.",
+    };
+    return map[status] || "Procesando...";
+  }
+
+  async function fetchFullAnalysis(chatId: string, attempt = 0) {
+    // Mark as loading while we fetch
+    if (attempt === 0) {
+      setChats(prev => prev.map(c => c.id === chatId ? { ...c, loadingRecommendations: true } : c));
     }
-    window.addEventListener("mousedown", onDown);
-    return () => window.removeEventListener("mousedown", onDown);
-  }, [popupOpen]);
 
-  useEffect(() => {
-    if (composerDocked) requestAnimationFrame(() => inputRef.current?.focus());
-  }, [composerDocked]);
+    try {
+      const res = await fetchWithAuth(`/analysis/${chatId}/full`);
+      if (res.ok) {
+        const data = await res.json();
 
-  function pushMessage(chatId: string, msg: Message) {
+        // Retry logic: analysis_completed fires before Celery recommendation tasks finish.
+        // However, if there are also 0 insights, it means the analysis had no useful data at all
+        // (Tavily returned nothing, or embedding/LLM failed silently). In that case, stop retrying.
+        const hasInsights = data.insights.length > 0;
+        if (data.recommendations.length === 0 && hasInsights && attempt < 6) {
+          setTimeout(() => fetchFullAnalysis(chatId, attempt + 1), 2000);
+          return;
+        }
+
+        // If after all retries (or no insights at all), mark as empty
+        const isEmpty = data.recommendations.length === 0 && data.insights.length === 0;
+
+        setChats((prev) =>
+          prev.map((c) =>
+            c.id === chatId
+              ? {
+                ...c,
+                loadingRecommendations: false,
+                noInsights: isEmpty,
+                insights: data.insights
+                  .map((ins: any) => `\u2022 [${ins.severity?.toUpperCase() || 'INFO'}] ${ins.title}\n${ins.description}`)
+                  .join("\n\n"),
+                recommendationCards: data.recommendations.map((r: any): RecommendationCardUI => ({
+                  id: r.id,
+                  productId: r.product_id,
+                  title: `Producto HPE #${r.product_id}`,
+                  need: r.reasoning || "Oportunidad estrat\u00e9gica detectada.",
+                  matchPercentage: Math.round(r.match_percentage ?? 0),
+                  confidenceScore: r.confidence_score ?? 0,
+                  isAccepted: Boolean(r.is_accepted),
+                })),
+                selectedRecommendationIds: data.recommendations
+                  .filter((r: any) => r.is_accepted)
+                  .map((r: any) => r.id as number),
+                commercialPack: data.sales_strategy ? mapBackendStrategyToPack(data) : undefined,
+                stage: data.sales_strategy ? "commercial" : "recommendations",
+              }
+              : c
+          )
+        );
+      } else {
+        const errText = await res.text();
+        console.error("fetchFullAnalysis failed:", res.status, errText);
+        setChats(prev => prev.map(c => c.id === chatId ? { ...c, loadingRecommendations: false } : c));
+      }
+    } catch (err) {
+      console.error("Fetch full error:", err);
+      setChats(prev => prev.map(c => c.id === chatId ? { ...c, loadingRecommendations: false } : c));
+    }
+  }
+
+  function mapBackendStrategyToPack(data: any): CommercialPack {
+    const s = data.sales_strategy;
+    return {
+      companyName: data.company_name,
+      problem: s.account_strategic_overview || "",
+      solution: (s.priority_initiatives || []).join(", "),
+      strategicMatchPct: data.strategic_score || 90,
+      howToStart: s.executive_conversation_version || "",
+      tone: "Consultivo / Ejecutivo",
+      emphasize: "Eficiencia y Valor Comercial",
+      avoid: "Tecnicismos sin contexto",
+      speechText: s.email_version || "",
+      speechWordCount: countWords(s.email_version || ""),
+      versionLabel: "HPE INSIGHT AI v3.0",
+      strategicData: [
+        { id: "s1", title: "Visión Estratégica", subtitle: s.account_strategic_overview },
+        { id: "s2", title: "Posicionamiento Financiero", subtitle: s.financial_positioning },
+      ],
+    };
+  }
+
+  const toggleRecommendation = async (chatId: string, recId: number) => {
+    // Optimistic update
+    setChats((prev) =>
+      prev.map((c) => {
+        if (c.id !== chatId) return c;
+        const current = c.selectedRecommendationIds || [];
+        const isSelected = current.includes(recId);
+        const next = isSelected ? current.filter((id) => id !== recId) : [...current, recId];
+        return { ...c, selectedRecommendationIds: next };
+      })
+    );
+
+    try {
+
+      const chat = chats.find(c => c.id === chatId);
+      const isSelected = !(chat?.selectedRecommendationIds || []).includes(recId);
+      await fetchWithAuth(`/analysis/${chatId}/recommendations/${recId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_accepted: isSelected }),
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleGenerateStrategy = async (chatId: string) => {
+    const chat = chats.find((c) => c.id === chatId);
+    if (!chat || (chat.selectedRecommendationIds || []).length === 0) {
+      alert("Debes seleccionar al menos una recomendación para continuar");
+      return;
+    }
+
     setChats((prev) =>
       prev.map((c) =>
         c.id === chatId
-          ? {
-            ...c,
-            whenISO: new Date().toISOString(),
-            messages: [...c.messages, msg],
-          }
+          ? { ...c, stage: "commercial_progress", commercialProgress: 10, commercialProgressLabel: "Iniciando generación comercial..." }
           : c
       )
     );
-  }
 
-  const handleNewChat = () => {
-    const chatId = uid();
-    const nowISO = new Date().toISOString();
+    try {
+      const res = await fetchWithAuth(`/analysis/${chatId}/regenerate-strategy`, { method: "POST" });
+      if (res.ok) {
+        pollAnalysisProgress(chatId); // Poll for "completed" again
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
-    const newChat: ChatItem = {
-      id: chatId,
-      companyName: "Nuevo chat",
-      domain: "",
-      whenISO: nowISO,
-      initial: "N",
-      color: "bg-black",
-      analysisType,
-      source: "main",
-      messages: [],
-    };
+  const handleRegenerate = async (chatId: string) => {
+    setChats((prev) =>
+      prev.map((c) =>
+        c.id === chatId
+          ? { ...c, stage: "commercial_progress", commercialProgress: 10, commercialProgressLabel: "Regenerando estrategia..." }
+          : c
+      )
+    );
+    try {
+      const res = await fetchWithAuth(`/analysis/${chatId}/regenerate-strategy`, { method: "POST" });
+      if (res.ok) pollAnalysisProgress(chatId); // MUST poll — strategy is generated async via Celery
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
-    setChats((prev) => [newChat, ...prev]);
-    setActiveChatId(chatId);
-
-    setQuery("");
-    setExtraCompanyName("");
-    setExtraIndustry("");
-    setInputSource(null);
-    setUrlError(null);
-    setPopupOpen(false);
-
-    requestAnimationFrame(() => inputRef.current?.focus());
+  const handleDeleteAnalysis = async (chatId: string) => {
+    try {
+      const res = await fetchWithAuth(`/analysis/${chatId}`, { method: "DELETE" });
+      if (res.ok) {
+        deleteChat(chatId);
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleSend = async () => {
-    const source: "main" | "additional" | null =
-      inputSource ?? (mainValue ? "main" : additionalHasValue ? "additional" : null);
-
+    const source: InputSource = inputSource ?? (mainValue ? "main" : additionalHasValue ? "additional" : null);
     if (!source) return;
 
-    const industryMap: Record<string, number> = {
-      "retail": 1,
-      "finanzas": 2,
-      "financial": 2,
-      "manufactura": 3,
-      "manufacturing": 3,
-      "salud": 4,
-      "healthcare": 4,
-      "telecomunicaciones": 5,
-      "telecom": 5,
-      "energia": 6,
-      "energy": 6
-    };
-
+    let normalized = "";
     let companyName = "";
-    let industryName = "";
-    let url = "";
+    let domain = "";
+    let industryLabel = "";
+    let indId = 1;
 
     if (source === "main") {
       const v = validateUrl(mainValue);
-      if (!v.ok) {
-        setUrlError(v.error ?? "URL inválida.");
-        return;
-      }
-      const normalized = v.normalized!;
-      const info = extractCompanyFromUrl(normalized);
-      companyName = info.companyName;
-      url = normalized;
+      if (!v.ok) { setUrlError(v.error!); return; }
+      normalized = v.normalized!;
+      domain = extractDomain(normalized);
+      companyName = domain;
     } else {
-      companyName = extraCompanyName.trim() || "Sin nombre";
-      industryName = extraIndustry.trim().toLowerCase();
+      companyName = extraCompanyName.trim();
+      industryLabel = extraIndustry.trim();
+      indId = getIndustryId(industryLabel);
     }
 
-    const industryId = industryMap[industryName] || 1;
-
     try {
+      const payload: Record<string, any> = {
+        company_name: companyName,
+        industry_id: indId,
+        analysis_type: analysisType,
+      };
+      if (normalized) payload["website_url"] = normalized;
+
       const res = await fetchWithAuth("/analysis/", {
         method: "POST",
-        body: JSON.stringify({
-          company_name: companyName,
-          industry_id: industryId,
-          website_url: url || undefined
-        })
+        body: JSON.stringify(payload),
       });
 
       if (res.ok) {
         const data = await res.json();
-        const newId = data.analysis_id.toString();
+        const chatId = data.analysis_id.toString();
 
         const newChat: ChatItem = {
-          id: newId,
+          id: chatId,
           companyName,
-          domain: url || "",
+          domain,
           whenISO: new Date().toISOString(),
           initial: (companyName[0] || "?").toUpperCase(),
           color: pickColorFromString(companyName),
           analysisType,
           source,
-          messages: [
-            {
-              id: uid(),
-              role: "user",
-              text: url || companyName,
-              tsISO: new Date().toISOString()
-            },
-            {
-              id: uid(),
-              role: "assistant",
-              text: `Análisis iniciado para ${companyName}. Procesando señales estratégicas...`,
-              tsISO: new Date().toISOString()
-            }
-          ]
+          url: normalized,
+          industryLabel,
+          industryId: indId,
+          messages: [],
+          analysisStatus: "running",
+          analysisProgress: 0,
+          analysisProgressLabel: "Iniciando an\u00e1lisis...",
+          stage: "analysis_progress",
         };
 
-        setChats(prev => [newChat, ...prev]);
-        setActiveChatId(newId);
+        setChats((prev) => [newChat, ...prev]);
+        setActiveChatId(chatId);
         setQuery("");
         setExtraCompanyName("");
         setExtraIndustry("");
         setInputSource(null);
         setPopupOpen(false);
         setUrlError(null);
+
+        pollAnalysisProgress(chatId);
       } else {
-        const errData = await res.json();
-        setUrlError(errData.detail || "Error al iniciar el análisis.");
+        // Try to read the error body for a clearer message
+        let msg = "Error del servidor al iniciar an\u00e1lisis.";
+        try {
+          const errData = await res.json();
+          if (errData?.detail) msg = errData.detail;
+        } catch { }
+        setUrlError(msg);
       }
     } catch (err) {
-      console.error("Error creating analysis:", err);
-      setUrlError("Error de conexión.");
+      console.error(err);
+      setUrlError("Error de conexión con el backend.");
     }
   };
+
+
+
+  const handleNewChat = () => {
+    setActiveChatId(null);
+    setQuery("");
+    setExtraCompanyName("");
+    setExtraIndustry("");
+    setInputSource(null);
+    setUrlError(null);
+    setPopupOpen(false);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  const deleteChat = (id: string) => {
+    setChats((prev) => prev.filter((c) => c.id !== id));
+    if (activeChatId === id) setActiveChatId(null);
+  };
+
+  const showComposer = !activeChat || activeChat.stage === "input";
 
   return (
     <AppShell>
       <div className="flex h-[calc(100dvh-140px)] gap-6">
-        {/* Sidebar / Historial */}
-        <section
-          className={[
-            "shrink-0 rounded-2xl border border-border bg-app shadow-sm h-full flex flex-col min-h-0 transition-all duration-300",
-            sidebarCollapsed ? "w-[96px]" : "w-[360px]",
-          ].join(" ")}
-        >
-          {/* Header */}
-          <div
-            className={[
-              "border-b border-border",
-              sidebarCollapsed ? "px-2 py-3" : "px-5 py-4",
-            ].join(" ")}
-          >
+        {/* Sidebar */}
+        <section className={[
+          "shrink-0 rounded-2xl border border-border bg-app shadow-sm h-full flex flex-col min-h-0 transition-all duration-300",
+          sidebarCollapsed ? "w-[96px]" : "w-[360px]",
+        ].join(" ")}>
+          <div className={["border-b border-border", sidebarCollapsed ? "px-2 py-3" : "px-5 py-4"].join(" ")}>
             {!sidebarCollapsed ? (
-              <>
-                <div className="flex items-center justify-between">
-                  <div className="text-lg font-semibold">Historial de análisis</div>
-                  <button
-                    type="button"
-                    onClick={() => setSidebarCollapsed(true)}
-                    className="grid h-10 w-10 place-items-center rounded-xl border border-border bg-card text-text-secondary hover:bg-hover"
-                    aria-label="Minimizar"
-                    title="Minimizar"
-                  >
-                    <PanelLeft size={18} />
-                  </button>
-                </div>
-
-                <div className="mt-4 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleNewChat}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2 text-sm font-semibold text-text-primary hover:bg-hover"
-                  >
-                    <span className="grid h-6 w-6 place-items-center rounded-lg border border-border bg-app">
-                      <Plus size={16} />
-                    </span>
-                    Nuevo chat
-                  </button>
-                </div>
-
-                <div className="mt-3 flex items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2">
-                  <span className="text-text-muted">
-                    <Search size={16} />
-                  </span>
-                  <input
-                    placeholder="Buscar cuenta..."
-                    className="w-full bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none"
-                  />
-                </div>
-              </>
+              <div className="flex items-center justify-between">
+                <div className="text-lg font-semibold">Historial</div>
+                <button onClick={() => setSidebarCollapsed(true)} className="icon-btn h-10 w-10 rounded-xl border border-border"><PanelLeft size={18} /></button>
+              </div>
             ) : (
-              <div className="flex flex-col items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setSidebarCollapsed(false)}
-                  className="icon-btn h-10 w-10 rounded-xl border border-border bg-card text-text-secondary hover:bg-hover"
-                  aria-label="Expandir"
-                  title="Expandir"
-                >
-                  <PanelRight className="h-[18px] w-[18px] shrink-0" />
-                </button>
-
-
-                <button
-                  type="button"
-                  onClick={handleNewChat}
-                  className="icon-btn h-10 w-10 rounded-xl border border-border bg-card text-text-secondary hover:bg-hover"
-                  aria-label="Nuevo chat"
-                  title="Nuevo chat"
-                >
-                  <Plus className="h-[18px] w-[18px] shrink-0" />
-                </button>
-              </div>
+              <button onClick={() => setSidebarCollapsed(false)} className="mx-auto block icon-btn h-10 w-10 rounded-xl border border-border"><PanelRight size={18} /></button>
             )}
-          </div>
-
-          {/* Lista de chats */}
-          <div className="min-h-0 flex-1 overflow-auto px-2 py-3">
-            {chats.map((h) => {
-              const selected = h.id === activeChatId;
-
-              if (sidebarCollapsed) {
-                return (
-                  <button
-                    key={h.id}
-                    onClick={() => setActiveChatId(h.id)}
-                    className={[
-                      "mx-auto mb-3 inline-flex aspect-square",
-                      "!h-16 !w-16 items-center justify-center rounded-full border transition overflow-hidden",
-                      selected
-                        ? "border-brand bg-brand-accent"
-                        : "border-border bg-card hover:bg-hover",
-                    ].join(" ")}
-                    title={`${h.companyName} • ${h.analysisType}${h.domain ? ` • ${h.domain}` : ""}`}
-                    style={{ width: 64, height: 64 }}
-                  >
-                    <span
-                      className={[
-                        "inline-flex aspect-square !h-11 !w-11 items-center justify-center rounded-full",
-                        "text-base font-bold text-white leading-none",
-                        h.color,
-                      ].join(" ")}
-                      style={{ width: 44, height: 44 }}
-                    >
-                      {h.initial}
-                    </span>
-                  </button>
-                );
-              }
-
-              return (
-                <button
-                  key={h.id}
-                  onClick={() => setActiveChatId(h.id)}
-                  className={[
-                    "flex w-full items-center gap-4 rounded-2xl border px-4 py-4 text-left shadow-sm transition",
-                    selected
-                      ? "border-brand bg-brand-accent"
-                      : "border-border bg-card hover:bg-hover",
-                  ].join(" ")}
-                  title={`${h.companyName} • ${h.analysisType}${h.domain ? ` • ${h.domain}` : ""}`}
-                >
-                  <div
-                    className={[
-                      "flex h-11 w-11 items-center justify-center rounded-full text-sm font-bold text-white",
-                      h.color,
-                    ].join(" ")}
-                  >
-                    {h.initial}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-text-primary">{h.companyName}</div>
-                    <div className="truncate text-xs text-text-secondary">
-                      {h.analysisType}
-                      {h.domain ? ` • ${h.domain}` : ""}
-                    </div>
-                  </div>
-
-                  <div className="text-xs text-text-muted">{formatWhen(h.whenISO)}</div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Chat */}
-        <section className="min-w-0 flex-1 rounded-2xl border border-border bg-app shadow-sm h-full flex flex-col min-h-0 overflow-hidden">
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-full bg-brand text-white">
-                <Zap size={18} />
-              </div>
-              <div className="leading-tight">
-                <div className="flex items-center gap-2">
-                  <div className="text-sm font-semibold">HPE Insight AI</div>
-                  <span className="h-2 w-2 rounded-full bg-success" />
-                </div>
-                <div className="text-xs text-text-secondary">Asistente estratégico de cuentas</div>
-              </div>
-            </div>
-
-            <button className="icon-btn h-10 w-10 rounded-xl border border-border bg-card text-text-secondary hover:bg-hover">
-              <MoreHorizontal className="h-[18px] w-[18px] shrink-0" />
+            <button onClick={handleNewChat} className="mt-4 w-full flex items-center justify-center gap-2 rounded-2xl border bg-card py-2 text-sm font-semibold hover:bg-hover">
+              <Plus size={16} /> {!sidebarCollapsed && "Nuevo chat"}
             </button>
           </div>
 
-          <div className="relative flex flex-1 min-h-0 flex-col">
-            {/* Scroll area */}
-            <div className="min-h-0 flex-1 overflow-auto px-8 py-8 pb-44">
+          <div className="flex-1 overflow-auto px-2 py-3">
+            {chats.map((h) => (
+              <div key={h.id} className={["relative flex items-center p-3 mb-2 rounded-2xl border transition group", h.id === activeChatId ? "border-brand bg-brand-accent" : "border-border bg-card hover:bg-hover"].join(" ")}>
+                <button onClick={() => setActiveChatId(h.id)} className="flex-1 flex items-center gap-3 overflow-hidden text-left">
+                  <div className={["h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-white font-bold", h.color].join(" ")}>{h.initial}</div>
+                  {!sidebarCollapsed && (
+                    <div className="truncate">
+                      <div className="text-xs font-semibold truncate">{h.companyName}</div>
+                      <div className="text-[10px] text-text-muted">{formatWhen(h.whenISO)}</div>
+                    </div>
+                  )}
+                </button>
+                {!sidebarCollapsed && (
+                  <button onClick={() => deleteChat(h.id)} className="opacity-0 group-hover:opacity-100 p-2 text-text-muted hover:text-error transition"><Trash2 size={14} /></button>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Main Content */}
+        <section className="flex-1 rounded-2xl border border-border bg-app shadow-sm h-full flex flex-col min-h-0 overflow-hidden">
+          <header className="px-6 py-4 border-b border-border flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-brand flex items-center justify-center text-white"><Zap size={18} /></div>
+              <div>
+                <div className="text-sm font-bold">HPE Insight AI</div>
+                <div className="text-[10px] text-text-secondary">Enterprise Intelligence</div>
+              </div>
+            </div>
+          </header>
+
+          <div className="flex-1 flex flex-col min-h-0 relative">
+            <div className="flex-1 overflow-auto px-6 py-8 pb-44">
               {!activeChat ? (
-                <div className="flex h-full flex-col items-center justify-center text-center">
-                  <h2 className="text-3xl font-semibold tracking-tight">¿Con qué cuenta quieres comenzar?</h2>
-                </div>
-              ) : activeChat.messages.length === 0 ? (
-                <div className="flex h-full flex-col items-center justify-center text-center">
-                  <h2 className="text-2xl font-semibold tracking-tight">Nuevo chat</h2>
-                  <p className="mt-2 text-sm text-text-secondary">
-                    Ingresa una URL válida o usa “Información adicional” para iniciar el análisis.
-                  </p>
+                <div className="h-full flex flex-col items-center justify-center text-center">
+                  <h2 className="text-3xl font-bold tracking-tight">Bienvenido a HPE Insight AI</h2>
+                  <p className="mt-2 text-text-secondary">Ingresa una cuenta para comenzar el análisis estratégico.</p>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {activeChat.messages.map((m) =>
-                    m.role === "assistant" ? (
-                      <AssistantBubble key={m.id} text={m.text} />
-                    ) : (
-                      <UserBubble key={m.id} text={m.text} />
-                    )
+                <div className="max-w-[860px] mx-auto space-y-8">
+                  {activeChat.analysisStatus === "running" && (
+                    <ProgressCard title="Análisis en curso" progress={activeChat.analysisProgress ?? 0} label={activeChat.analysisProgressLabel ?? ""} />
                   )}
+
+                  {activeChat.stage === "recommendations" && (
+                    <div className="space-y-6">
+                      {/* Case: analysis completed but found no useful data */}
+                      {activeChat.noInsights && (
+                        <div className="flex flex-col items-center justify-center gap-4 py-12 px-6 border border-dashed border-amber-400/40 bg-amber-50/10 rounded-2xl">
+                          <div className="text-3xl">🔍</div>
+                          <div className="text-center">
+                            <p className="text-sm font-bold text-text-primary">Sin datos suficientes para analizar</p>
+                            <p className="text-xs text-text-secondary mt-1 max-w-sm">
+                              El motor de búsqueda no encontró información pública disponible para <strong>{activeChat.companyName}</strong>.
+                              Prueba con el nombre exacto de la empresa o una URL diferente.
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => handleDeleteAnalysis(activeChat.id)}
+                            className="px-4 py-2 text-xs font-bold border border-error/50 text-error rounded-xl hover:bg-error/5 transition flex items-center gap-2"
+                          >
+                            <Trash2 size={14} /> Eliminar e intentar de nuevo
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Normal recommendations flow */}
+                      {!activeChat.noInsights && (
+                        <>
+                          {activeChat.insights && (
+                            <div className="p-5 rounded-2xl bg-card border border-border text-sm text-text-primary leading-relaxed shadow-sm">
+                              <h4 className="font-bold mb-3 flex items-center gap-2"><Lightbulb size={16} className="text-amber-500" /> Insights del Análisis</h4>
+                              <pre className="whitespace-pre-wrap font-sans text-xs text-text-secondary">{activeChat.insights}</pre>
+                            </div>
+                          )}
+
+                          {/* Loading state while retrying */}
+                          {activeChat.loadingRecommendations && (
+                            <div className="flex flex-col items-center justify-center gap-3 py-10 text-text-secondary">
+                              <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+                              <p className="text-sm font-medium">Cargando recomendaciones HPE...</p>
+                              <p className="text-xs text-text-muted">El análisis está procesando las recomendaciones. Espera un momento.</p>
+                            </div>
+                          )}
+
+                          {!activeChat.loadingRecommendations && (
+                            <>
+                              {(activeChat.recommendationCards?.length ?? 0) > 0 ? (
+                                <RecommendationsSection
+                                  cards={activeChat.recommendationCards}
+                                  selectedIds={activeChat.selectedRecommendationIds || []}
+                                  onToggle={(id) => toggleRecommendation(activeChat.id, id)}
+                                />
+                              ) : (
+                                <div className="flex flex-col items-center justify-center gap-3 py-10 border border-dashed border-border rounded-2xl text-text-secondary">
+                                  <p className="text-sm font-medium">No hay recomendaciones disponibles aún.</p>
+                                  <p className="text-xs text-text-muted">El motor de IA puede estar procesando. Intenta recargar.</p>
+                                  <button
+                                    onClick={() => fetchFullAnalysis(activeChat.id)}
+                                    className="mt-2 px-4 py-2 text-xs font-bold border border-brand text-brand rounded-xl hover:bg-brand/5 transition flex items-center gap-2"
+                                  >
+                                    <RefreshCw size={14} /> Recargar recomendaciones
+                                  </button>
+                                </div>
+                              )}
+                              {(activeChat.recommendationCards?.length ?? 0) > 0 && (
+                                <div className="flex justify-center pt-4">
+                                  <button
+                                    onClick={() => handleGenerateStrategy(activeChat.id)}
+                                    className="px-8 py-4 bg-brand text-white rounded-2xl font-bold shadow-lg hover:bg-brand-dark transition-all transform hover:scale-105"
+                                  >
+                                    Generar Estrategia de Venta
+                                  </button>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {activeChat.stage === "commercial_progress" && (
+                    <ProgressCard title="Estrategia Comercial" progress={activeChat.commercialProgress ?? 0} label={activeChat.commercialProgressLabel ?? ""} />
+                  )}
+
+                  {activeChat.stage === "commercial" && activeChat.commercialPack && (
+                    <CommercialSection
+                      pack={activeChat.commercialPack}
+                      onCopySpeech={() => navigator.clipboard.writeText(activeChat.commercialPack!.speechText)}
+                      onDelete={() => handleDeleteAnalysis(activeChat.id)}
+                      onRegenerate={() => handleRegenerate(activeChat.id)}
+                      onGoInsights={() => navigate("/insights")}
+                    />
+                  )}
+
+                  <div className="pt-8 border-t border-border space-y-4">
+                    {activeChat.messages.map(m => (
+                      <div key={m.id} className={["flex w-full", m.role === "user" ? "justify-end" : "justify-start"].join(" ")}>
+                        <div className={["max-w-[70%] px-4 py-3 rounded-2xl text-sm border", m.role === "user" ? "bg-brand-accent border-brand/20" : "bg-card border-border"].join(" ")}>
+                          {m.text}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Composer */}
-            <div className="z-20 w-full sticky bottom-0 border-t border-border bg-app px-8 py-5">
-              <div className="w-full">
+            {showComposer && (
+              <div className="absolute bottom-0 left-0 w-full px-6 py-5 bg-gradient-to-t from-app via-app pt-10">
                 <Composer
                   mode="bottom"
                   query={query}
@@ -648,7 +806,7 @@ export default function AccountProfile() {
                   setUrlError={setUrlError}
                 />
               </div>
-            </div>
+            )}
           </div>
         </section>
       </div>
@@ -656,69 +814,120 @@ export default function AccountProfile() {
   );
 }
 
-/* ---------- UI helpers ---------- */
+/* ===================== SUB-COMPONENTS ===================== */
 
-function AssistantBubble({ text }: { text: string }) {
+function ProgressCard({ title, progress, label }: { title: string; progress: number; label: string }) {
+  const p = Math.max(0, Math.min(100, Math.round(progress)));
   return (
-    <div
-      className={[
-        "max-w-[760px] rounded-2xl bg-card px-4 py-3 text-sm text-text-primary border border-border",
-        "whitespace-pre-wrap break-words overflow-hidden",
-        "[overflow-wrap:anywhere] [word-break:break-word]",
-      ].join(" ")}
-    >
-      {text}
-    </div>
-  );
-}
-
-function UserBubble({ text }: { text: string }) {
-  const shown = truncateIfUrl(text, 110);
-
-  return (
-    <div className="flex w-full justify-end">
-      <div
-        className={[
-          "max-w-[760px] rounded-2xl bg-brand-accent px-4 py-3 text-sm text-text-primary border border-border",
-          "whitespace-pre-wrap break-words overflow-hidden",
-          "[overflow-wrap:anywhere] [word-break:break-word]",
-        ].join(" ")}
-        title={text} // ✅ hover para ver completa
-      >
-        {shown}
+    <div className="w-full rounded-2xl border border-border bg-card p-5 shadow-sm">
+      <div className="flex justify-between items-center mb-4">
+        <div>
+          <div className="text-sm font-bold">{title}</div>
+          <div className="text-[10px] text-text-muted uppercase tracking-wider">{label}</div>
+        </div>
+        <div className="text-lg font-bold text-brand tabular-nums">{p}%</div>
+      </div>
+      <div className="h-2 w-full bg-hover rounded-full overflow-hidden border border-border">
+        <div className="h-full bg-brand transition-all duration-300" style={{ width: `${p}%` }} />
       </div>
     </div>
   );
 }
 
-function Composer({
-  mode,
-  query,
-  setQuery,
-  popupOpen,
-  setPopupOpen,
-  analysisType,
-  setAnalysisType,
-  popupRef,
-  plusBtnRef,
-  onSend,
-  inputRef,
-  companyRef,
-  extraCompanyName,
-  setExtraCompanyName,
-  extraIndustry,
-  setExtraIndustry,
-  inputSource,
-  setInputSource,
-  mainLocked,
-  additionalLocked,
-  canSend,
-  switchToMain,
-  switchToAdditional,
-  resetSource,
-  urlError,
-  setUrlError,
-}: {
+function RecommendationsSection({ cards, selectedIds, onToggle }: { cards?: RecommendationCardUI[]; selectedIds: number[]; onToggle: (id: number) => void }) {
+  if (!cards?.length) return null;
+
+  return (
+    <div className="space-y-4">
+      <div className="text-sm font-bold text-text-secondary uppercase tracking-widest pl-1">Recomendaciones Detectadas</div>
+      <div className="grid grid-cols-1 gap-4">
+        {cards.map(c => {
+          const isSelected = selectedIds.includes(c.id);
+          return (
+            <div
+              key={c.id}
+              onClick={() => onToggle(c.id)}
+              className={["cursor-pointer group relative p-5 rounded-2xl border transition-all duration-200 shadow-sm", isSelected ? "border-brand bg-brand-accent/30 ring-1 ring-brand" : "border-border bg-card hover:border-brand/40"].join(" ")}
+            >
+              <div className="flex items-start gap-4">
+                <div className="pt-1">
+                  <div className={["w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors", isSelected ? "bg-brand border-brand" : "border-border bg-app"].join(" ")}>
+                    {isSelected && <Check size={14} className="text-white" />}
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-center mb-1">
+                    <h4 className="font-bold text-base truncate">{c.title}</h4>
+                    <span className="text-[10px] bg-hover px-2 py-0.5 rounded-full font-bold uppercase text-text-muted">Product ID: {c.productId}</span>
+                  </div>
+                  <p className="text-sm text-text-secondary mb-3 leading-relaxed">{c.need}</p>
+                  <div className="flex items-center gap-4 text-[11px] text-text-muted font-semibold">
+                    <span className="flex items-center gap-1"><Zap size={12} className="text-amber-500" /> {c.matchPercentage}% Match</span>
+                    <span>Confianza: {(c.confidenceScore * 100).toFixed(0)}%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CommercialSection({ pack, onCopySpeech, onDelete, onRegenerate, onGoInsights }: { pack: CommercialPack; onCopySpeech: () => void; onDelete: () => void; onRegenerate: () => void; onGoInsights: () => void }) {
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {pack.strategicData.map(d => (
+          <div key={d.id} className="p-5 rounded-2xl border border-border bg-card shadow-sm">
+            <div className="text-[10px] font-bold text-brand uppercase tracking-widest mb-1">{d.title}</div>
+            <div className="text-sm font-semibold text-text-primary leading-snug">{d.subtitle}</div>
+          </div>
+        ))}
+      </div>
+      <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-md">
+        <div className="px-6 py-4 bg-page border-b border-border flex justify-between items-center">
+          <div className="text-xs font-bold flex items-center gap-2"><Send size={14} /> SPEECH DE VENTA SUGERIDO</div>
+          <button onClick={onCopySpeech} className="p-2 hover:bg-hover rounded-lg transition text-text-secondary"><Copy size={16} /></button>
+        </div>
+        <div className="p-8 text-sm leading-relaxed whitespace-pre-wrap text-text-primary bg-app/40 m-4 rounded-2xl border border-border italic border-dashed">
+          "{pack.speechText}"
+        </div>
+        <div className="px-8 py-6 border-t border-border bg-card grid grid-cols-2 gap-8">
+          <div>
+            <div className="text-[10px] font-bold text-text-muted uppercase mb-1">Tono Recomendado</div>
+            <div className="text-xs font-medium">{pack.tone}</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-bold text-text-muted uppercase mb-1">Qué Evitar</div>
+            <div className="text-xs font-medium">{pack.avoid}</div>
+          </div>
+          <div>
+            <button onClick={onGoInsights} className="text-xs font-bold text-brand flex items-center gap-1 underline">Más insights <ExternalLink size={12} /></button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-center gap-4 pt-6">
+        <button
+          onClick={onDelete}
+          className="px-6 py-3 rounded-2xl border border-error/50 text-error font-bold text-sm hover:bg-error/5 transition-colors flex items-center gap-2"
+        >
+          <Trash2 size={16} /> Eliminar Análisis
+        </button>
+        <button
+          onClick={onRegenerate}
+          className="px-6 py-3 rounded-2xl border border-brand text-brand font-bold text-sm hover:bg-brand/5 transition-colors flex items-center gap-2"
+        >
+          <RefreshCw size={16} /> Regenerar Estrategia
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface ComposerProps {
   mode: "center" | "bottom";
   query: string;
   setQuery: Dispatch<SetStateAction<string>>;
@@ -745,288 +954,55 @@ function Composer({
   resetSource: () => void;
   urlError: string | null;
   setUrlError: Dispatch<SetStateAction<string | null>>;
-}) {
-  const options = [
-    "Análisis Completo",
-    "Detectar Oportunidades",
-    "Mapear Stack Actual",
-    "Analizar Madurez Digital",
-  ];
+}
 
-  const industries = [
-    "Tecnología",
-    "Finanzas",
-    "Retail",
-    "Manufactura",
-    "Logística",
-    "Salud",
-    "Educación",
-    "Gobierno",
-    "E-commerce",
-  ];
-
+function Composer({
+  mode, query, setQuery, popupOpen, setPopupOpen, analysisType, setAnalysisType, popupRef, plusBtnRef, onSend, inputRef, companyRef, extraCompanyName, setExtraCompanyName, extraIndustry, setExtraIndustry, setInputSource, mainLocked, additionalLocked, canSend, switchToMain, urlError
+}: ComposerProps) {
+  const industries = ["Tecnología", "Finanzas", "Retail", "Manufactura", "Logística", "Salud", "Educación", "Gobierno", "E-commerce"];
+  const options = ["Análisis Completo", "Detectar Oportunidades", "Mapear Stack Actual", "Analizar Madurez Digital"];
   const openUp = mode === "bottom";
-  const isQueryEmpty = query.trim().length === 0;
 
   return (
     <div className="relative">
-      <div
-        className={[
-          "flex items-center gap-3 rounded-2xl border border-border bg-card px-3 py-3",
-          mode === "center" ? "shadow-sm" : "",
-        ].join(" ")}
-      >
+      <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-3 py-3 shadow-xl">
         <div className="relative">
-          <button
-            ref={plusBtnRef}
-            type="button"
-            onClick={() => setPopupOpen((v) => !v)}
-            className="icon-btn h-10 w-10 rounded-xl border border-border bg-app text-text-secondary hover:bg-hover"
-            aria-label="Opciones"
-          >
-            <Plus className="h-[18px] w-[18px] shrink-0" />
-          </button>
+          <button ref={plusBtnRef} onClick={() => setPopupOpen(!popupOpen)} className="h-10 w-10 flex items-center justify-center rounded-xl bg-app border border-border hover:bg-hover transition"><Plus size={18} /></button>
 
           {popupOpen && (
-            <div
-              ref={popupRef}
-              className={[
-                "absolute left-0 z-50",
-                "w-[min(760px,calc(100vw-32px))] sm:w-[min(760px,calc(100vw-64px))]",
-                "grid grid-cols-1 sm:grid-cols-[260px_minmax(0,1fr)] gap-3 sm:gap-4",
-                openUp ? "bottom-12" : "top-12",
-              ].join(" ")}
-            >
-              {/* Popup 1: Tipo de análisis */}
-              <div className="w-full rounded-2xl border border-border bg-app p-3 shadow-xl max-h-[320px] overflow-auto">
-                <div className="px-2 pb-2 text-xs font-semibold text-text-muted">Tipo de Análisis</div>
-                <div className="space-y-2">
-                  {options.map((opt) => {
-                    const selected = analysisType === opt;
-                    return (
-                      <button
-                        key={opt}
-                        type="button"
-                        onClick={() => {
-                          setAnalysisType(opt);
-                          requestAnimationFrame(() => inputRef.current?.focus());
-                        }}
-                        className={[
-                          "w-full rounded-xl px-4 py-3 text-left text-sm font-medium",
-                          "transition-colors border",
-                          selected
-                            ? "bg-brand-accent text-text-primary border-brand"
-                            : "bg-card text-text-primary border-border hover:bg-hover",
-                          "focus:outline-none focus:ring-2 focus:ring-border",
-                          "flex items-center justify-between gap-3",
-                        ].join(" ")}
-                      >
-                        <span>{opt}</span>
-                        {selected ? (
-                          <span className="grid h-6 w-6 place-items-center rounded-full bg-brand text-white">
-                            <Check size={16} />
-                          </span>
-                        ) : (
-                          <span className="h-6 w-6" />
-                        )}
-                      </button>
-                    );
-                  })}
+            <div ref={popupRef} className={["absolute left-0 w-[400px] bg-app border border-border rounded-2xl shadow-2xl p-4 z-50 space-y-4", openUp ? "bottom-14" : "top-14"].join(" ")}>
+              <div>
+                <div className="text-[10px] font-bold text-text-muted uppercase mb-2">Análisis</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {options.map(o => (
+                    <button key={o} onClick={() => { setAnalysisType(o); setPopupOpen(false); }} className={["px-3 py-2 text-[10px] rounded-lg border text-left font-semibold transition", analysisType === o ? "border-brand bg-brand-accent text-brand" : "border-border hover:bg-hover"].join(" ")}>{o}</button>
+                  ))}
                 </div>
               </div>
 
-              {/* Popup 2: Información adicional */}
-              {isQueryEmpty && (
-                <div className="w-full rounded-2xl border border-border bg-app p-4 shadow-xl">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-text-primary">Información Adicional:</div>
-
-                    {additionalLocked && (
-                      <button
-                        type="button"
-                        onClick={switchToAdditional}
-                        className="rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold text-text-primary hover:bg-hover"
-                      >
-                        Cambiar aquí
-                      </button>
-                    )}
-                  </div>
-
-                  {additionalLocked && (
-                    <div className="mb-3 rounded-xl border border-border bg-card p-3 text-xs text-text-secondary">
-                      Estás usando el <span className="font-semibold text-text-primary">campo principal</span>. Haz clic en{" "}
-                      <span className="font-semibold text-text-primary">“Cambiar aquí”</span>.
-                    </div>
-                  )}
-
-                  <div className="space-y-3">
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-text-muted">Empresa (opcional)</label>
-                      <input
-                        ref={companyRef}
-                        value={extraCompanyName}
-                        disabled={additionalLocked}
-                        onChange={(e) => {
-                          if (additionalLocked) return;
-                          setInputSource("additional");
-                          setExtraCompanyName(e.target.value);
-                          setQuery("");
-                        }}
-                        placeholder={
-                          additionalLocked
-                            ? "Bloqueado: estás usando el campo principal"
-                            : "Ingresa el nombre de la empresa a analizar..."
-                        }
-                        className={[
-                          "h-11 w-full rounded-2xl border border-border bg-card px-4 text-sm outline-none",
-                          "text-text-primary placeholder:text-text-muted",
-                          additionalLocked ? "opacity-60 cursor-not-allowed" : "focus:border-brand",
-                        ].join(" ")}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-text-muted">Industria (opcional)</label>
-                      <div className="relative">
-                        <select
-                          value={extraIndustry}
-                          disabled={additionalLocked}
-                          onChange={(e) => {
-                            if (additionalLocked) return;
-                            setInputSource("additional");
-                            setExtraIndustry(e.target.value);
-                            setQuery("");
-                          }}
-                          className={[
-                            "h-11 w-full appearance-none rounded-2xl border border-border bg-card px-4 pr-10 text-sm outline-none",
-                            "text-text-primary",
-                            additionalLocked ? "opacity-60 cursor-not-allowed" : "focus:border-brand",
-                          ].join(" ")}
-                        >
-                          <option value="">Selecciona la Industria</option>
-                          {industries.map((i) => (
-                            <option key={i} value={i}>
-                              {i}
-                            </option>
-                          ))}
-                        </select>
-
-                        <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-text-muted">
-                          <ChevronDown size={18} />
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="text-xs text-text-muted">
-                      * Este panel solo aparece si aún no has escrito una URL en el campo principal.
-                    </div>
-                  </div>
-                </div>
-              )}
+              <div className="pt-4 border-t border-border">
+                <div className="text-[10px] font-bold text-text-muted uppercase mb-2">Información Manual</div>
+                <input ref={companyRef} value={extraCompanyName} disabled={additionalLocked} onChange={e => { setInputSource("additional"); setExtraCompanyName(e.target.value); setQuery(""); }} placeholder="Nombre de empresa..." className="w-full bg-card border border-border rounded-xl px-4 py-2 text-xs mb-2 outline-none focus:border-brand" />
+                <select value={extraIndustry} disabled={additionalLocked} onChange={e => { setInputSource("additional"); setExtraIndustry(e.target.value); setQuery(""); }} className="w-full bg-card border border-border rounded-xl px-4 py-2 text-xs outline-none focus:border-brand">
+                  <option value="">Industria...</option>
+                  {industries.map(i => <option key={i} value={i}>{i}</option>)}
+                </select>
+              </div>
             </div>
           )}
         </div>
 
-        {mainLocked && (
-          <button
-            type="button"
-            onClick={switchToMain}
-            className="rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold text-text-primary hover:bg-hover"
-          >
-            Cambiar a campo principal
-          </button>
-        )}
-
-        <input
-          ref={inputRef}
-          value={query}
-          disabled={mainLocked}
-          onChange={(e) => {
-            if (mainLocked) return;
-
-            const next = e.target.value;
-            setInputSource("main");
-            setQuery(next);
-            setExtraCompanyName("");
-            setExtraIndustry("");
-
-            const trimmed = next.trim();
-            if (!trimmed) {
-              setUrlError(null);
-            } else {
-              const v = validateUrl(trimmed);
-              setUrlError(v.ok ? null : v.error ?? "URL inválida.");
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              if (!canSend) return;
-              onSend();
-            }
-          }}
-          placeholder={
-            mainLocked
-              ? "Bloqueado: estás usando Información Adicional"
-              : "Ingresa la URL o nombre de la empresa a analizar..."
-          }
-          className={[
-            "h-10 min-w-0 flex-1 bg-transparent text-sm outline-none",
-            "text-text-primary placeholder:text-text-muted",
-            mainLocked ? "opacity-60 cursor-not-allowed" : "",
-          ].join(" ")}
-        />
-
-        <button
-          type="button"
-          onClick={onSend}
-          disabled={!canSend}
-          className={[
-            "icon-btn h-10 w-10 rounded-full text-white",
-            canSend ? "bg-brand hover:bg-brand-dark" : "bg-border cursor-not-allowed",
-          ].join(" ")}
-          aria-label="Enviar"
-        >
-          <ArrowUp className="h-[18px] w-[18px] shrink-0" />
-        </button>
-      </div>
-
-      {!mainLocked && query.trim().length > 0 && urlError && (
-        <div className="mt-2 rounded-xl border border-border bg-card px-3 py-2 text-xs text-text-secondary">
-          <span className="font-semibold text-text-primary">URL inválida:</span> {urlError}
-        </div>
-      )}
-
-      <div className="mt-2 flex items-center justify-between px-1 text-xs text-text-secondary">
-        <span>
-          Selección actual: <span className="font-semibold text-text-primary">{analysisType}</span>
-        </span>
-
-        <span className="inline-flex items-center gap-2 text-text-secondary">
-          {inputSource ? (
-            <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-2 py-1 text-[11px]">
-              <span>Usando: {inputSource === "main" ? "Campo principal" : "Info adicional"}</span>
-              <button
-                type="button"
-                onClick={resetSource}
-                className="rounded-full border border-border bg-app px-2 py-0.5 font-semibold hover:bg-hover"
-                title="Desbloquear ambos"
-              >
-                Reset
-              </button>
-            </span>
+        <div className="flex-1 flex items-center min-w-0">
+          {mainLocked ? (
+            <button onClick={switchToMain} className="text-xs font-bold text-brand bg-brand-accent px-3 py-1 rounded-lg border border-brand/20">Usando Manual (Reset?)</button>
           ) : (
-            <span className="rounded-full border border-border bg-card px-2 py-1 text-[11px]">
-              Usando: Auto
-            </span>
+            <input ref={inputRef} value={query} onChange={e => { setInputSource("main"); setQuery(e.target.value); setExtraCompanyName(""); setExtraIndustry(""); }} onKeyDown={e => e.key === "Enter" && canSend && onSend()} placeholder="URL o nombre de la cuenta..." className="w-full bg-transparent outline-none text-sm placeholder:text-text-muted" />
           )}
+        </div>
 
-          <span className="inline-flex items-center gap-1">
-            <Zap size={14} /> Insight AI
-          </span>
-        </span>
+        <button onClick={onSend} disabled={!canSend} className={["h-10 w-10 flex items-center justify-center rounded-full transition-all", canSend ? "bg-brand text-white shadow-lg scale-105" : "bg-border text-text-muted"].join(" ")}><ArrowUp size={18} /></button>
       </div>
+      {urlError && <div className="mt-2 ml-2 text-[10px] text-error font-semibold">⚠ {urlError}</div>}
     </div>
   );
 }
-

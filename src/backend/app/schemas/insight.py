@@ -42,6 +42,16 @@ class InsightResponse(BaseModel):
     factors: List[FactorSchema] = []
 
 
+# Simple schema that maps directly to the Insight DB model.
+# Used by get_full_analysis endpoint.
+class InsightSimpleResponse(BaseModel):
+    id: int
+    title: str
+    description: Optional[str] = None
+    severity: Optional[str] = None
+    category: Optional[str] = None
+
+
 class InsightItem(BaseModel):
     title: str
     description: str

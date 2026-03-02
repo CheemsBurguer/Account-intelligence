@@ -13,7 +13,7 @@ from ...models.company import Company
 from ...schemas.analysis import AnalysisResponse, AnalysisCreate, AnalysisListItem, AnalysisFullResponse, AnalysisProgressResponse
 from ...schemas.recommendation import RecommendationAccept, RecommendationResponse, RecommendationUpdate
 from ...schemas.sales_strategy import SalesStrategyResponse
-from ...schemas.insight import InsightResponse
+from ...schemas.insight import InsightSimpleResponse
 from ...services.ai.tasks.research_task import run_research
 from ...models.enums import PROGRESS_MAP, AnalysisStatus
 from ...utils.url import normalize_domain
@@ -127,38 +127,9 @@ async def accept_recommendation(
     )
 
 
-@api_router.get("/{analysis_id}", response_model=SalesStrategyResponse)
-async def get_sales_strategy(
-    analysis_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-
-    result = await db.execute(
-        select(SalesStrategy)
-        .join(Analysis, SalesStrategy.analysis_id == Analysis.id)
-        .where(
-            SalesStrategy.analysis_id == analysis_id,
-            Analysis.user_id == current_user.id
-        )
-    )
-
-    strategy = result.scalar_one_or_none()
-
-    if not strategy:
-        raise HTTPException(status_code=404, detail="Strategy not found")
-
-    return SalesStrategyResponse(
-        id=strategy.analysis_id,
-        status=strategy.status,
-        account_strategic_overview=strategy.account_strategic_overview,
-        priority_initiatives=strategy.priority_initiatives,
-        financial_positioning=strategy.financial_positioning,
-        technical_enablement_summary=strategy.technical_enablement_summary,
-        objection_handling=strategy.objection_handling,
-        executive_conversation_version=strategy.executive_conversation_version,
-        email_version=strategy.email_version,
-    )
+# NOTE: This route is intentionally placed LAST among /{analysis_id}/* routes
+# to avoid capturing /full, /progress, /complete, /regenerate-strategy as analysis_id.
+# See bottom of file.
 
 
 @api_router.patch("/{analysis_id}/complete")
@@ -255,11 +226,12 @@ async def get_full_analysis(
 
     for insight in analysis.insights:
         insights_response.append(
-            InsightResponse(
+            InsightSimpleResponse(
                 id=insight.id,
                 title=insight.title,
                 severity=insight.severity,
-                description=insight.description
+                description=insight.description,
+                category=insight.category,
             )
         )
 
@@ -463,3 +435,42 @@ async def delete_analysis(
     await db.commit()
 
     return {"message": "Analysis deleted successfully"}
+
+
+# -----------------------------------------------------------------------
+# IMPORTANT: This generic route MUST be declared LAST.
+# GET /{analysis_id} would otherwise shadow /{analysis_id}/full,
+# /{analysis_id}/progress, etc. because FastAPI matches routes in order.
+# -----------------------------------------------------------------------
+@api_router.get("/{analysis_id}", response_model=SalesStrategyResponse)
+async def get_sales_strategy(
+    analysis_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+
+    result = await db.execute(
+        select(SalesStrategy)
+        .join(Analysis, SalesStrategy.analysis_id == Analysis.id)
+        .where(
+            SalesStrategy.analysis_id == analysis_id,
+            Analysis.user_id == current_user.id
+        )
+    )
+
+    strategy = result.scalar_one_or_none()
+
+    if not strategy:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    return SalesStrategyResponse(
+        id=strategy.analysis_id,
+        status=strategy.status,
+        account_strategic_overview=strategy.account_strategic_overview,
+        priority_initiatives=strategy.priority_initiatives,
+        financial_positioning=strategy.financial_positioning,
+        technical_enablement_summary=strategy.technical_enablement_summary,
+        objection_handling=strategy.objection_handling,
+        executive_conversation_version=strategy.executive_conversation_version,
+        email_version=strategy.email_version,
+    )
