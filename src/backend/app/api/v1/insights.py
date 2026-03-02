@@ -12,6 +12,8 @@ from ...models.user import User
 api_router = APIRouter()
 
 
+from sqlalchemy.orm import selectinload
+
 @api_router.get("/", response_model=List[InsightResponse])
 async def list_user_insights(
     company_id: Optional[int] = Query(None),
@@ -23,6 +25,7 @@ async def list_user_insights(
     query = (
         select(Insight)
         .join(Analysis)
+        .options(selectinload(Insight.analysis))
         .where(Analysis.user_id == current_user.id)
     )
 
@@ -35,4 +38,42 @@ async def list_user_insights(
     result = await db.execute(query)
     insights = result.scalars().all()
 
-    return insights
+    response = []
+    for ins in insights:
+        # Determine tone based on severity
+        sev = ins.severity.lower()
+        tone = "media"
+        if sev == "critical": tone = "critica"
+        elif sev == "high": tone = "alta"
+        elif sev == "low": tone = "baja"
+
+        # Construct impact tag
+        impact_tag = {
+            "label": ins.severity.upper(),
+            "tone": tone
+        }
+
+        # Simulated factors based on breakdown or generic
+        breakdown = ins.analysis.score_breakdown or {}
+        factors = []
+        if breakdown.get("tech_intensity"):
+            factors.append({"label": "Tech Intensity", "level": "ALTA" if breakdown["tech_intensity"] > 7 else "MEDIA"})
+        if breakdown.get("financial_pressure"):
+            factors.append({"label": "Financial Pressure", "level": "ALTA" if breakdown["financial_pressure"] > 7 else "MEDIA"})
+
+        response.append(
+            InsightResponse(
+                id=str(ins.id),
+                category=ins.category or "General",
+                title=ins.title,
+                quote=f"Basado en señales detectadas en {ins.analysis.created_at.strftime('%Y-%m-%d')}.",
+                opportunityTitle=ins.title,
+                opportunityBody=ins.description,
+                propensityValue=float(ins.analysis.propensity_score or 0),
+                impactTag=impact_tag,
+                detectedAt=ins.analysis.created_at.isoformat(),
+                factors=factors
+            )
+        )
+
+    return response

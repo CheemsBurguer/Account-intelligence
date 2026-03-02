@@ -21,13 +21,25 @@ class InsightUpdate(BaseModel):
     source_snippet: Optional[str]
 
 
+class ImpactTagSchema(BaseModel):
+    label: str
+    tone: str  # "critica", "alta", "media", "baja"
+
+class FactorSchema(BaseModel):
+    label: str
+    level: str  # "ALTA", "MEDIA", "BAJA"
+
 class InsightResponse(BaseModel):
-    id: int
+    id: str
+    category: str
     title: str
-    severity: str
-    description: str
-    category: Optional[str] = None
-    card_size: Optional[str] = "medium"
+    quote: Optional[str] = None
+    opportunityTitle: str
+    opportunityBody: str
+    propensityValue: float
+    impactTag: Optional[ImpactTagSchema] = None
+    detectedAt: Optional[str] = None
+    factors: List[FactorSchema] = []
 
 
 class InsightItem(BaseModel):

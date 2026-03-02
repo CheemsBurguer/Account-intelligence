@@ -1,5 +1,6 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import AppShell from "../components/layout/AppShell"; // ✅ AJUSTA ESTA RUTA a tu proyecto
+import { fetchWithAuth } from "../services/api";
 
 type AccountItem = {
   id: string;
@@ -9,70 +10,14 @@ type AccountItem = {
   location: string;
   reason: { level: "critico" | "alto" | "medio" | "bajo"; text: string };
   score: number;
-  logo: React.ReactNode;
 };
 
-const accounts: AccountItem[] = [
-  {
-    id: "1",
-    name: "Healthcare",
-    code: "MX-23244",
-    industry: "SALUD",
-    location: "MONTERREY, MÉXICO",
-    reason: { level: "critico", text: "Fin de soporte en infraestructura heredada (EOSL)." },
-    score: 99,
-    logo: (
-      <div className="h-12 w-12 rounded-2xl bg-card grid place-items-center border border-border">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="text-brand">
-          <path
-            d="M10 3h4a2 2 0 0 1 2 2v2h2a2 2 0 0 1 2 2v4h-2V11H4v10h8v2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V5a2 2 0 0 1 2-2Z"
-            fill="currentColor"
-          />
-        </svg>
-      </div>
-    ),
-  },
-  {
-    id: "2",
-    name: "Banorte",
-    code: "MX-23123",
-    industry: "FINANZAS",
-    location: "GUADALAJARA, MÉXICO",
-    reason: { level: "alto", text: "Ventana próxima de renovación de almacenamiento." },
-    score: 98,
-    logo: <div className="h-12 w-12 rounded-2xl bg-card border border-border" />,
-  },
-  {
-    id: "3",
-    name: "Lenovo",
-    code: "MX-34234",
-    industry: "TECNOLOGÍA",
-    location: "TOLUCA, MÉXICO",
-    reason: { level: "alto", text: "Posible expansión de infraestructura híbrida." },
-    score: 97,
-    logo: <div className="h-12 w-12 rounded-2xl bg-card border border-border" />,
-  },
-  {
-    id: "4",
-    name: "Aeromexico",
-    code: "MX-20455",
-    industry: "TRANSPORTE",
-    location: "CDMX, MÉXICO",
-    reason: { level: "medio", text: "Interés creciente en soluciones de almacenamiento." },
-    score: 94,
-    logo: <div className="h-12 w-12 rounded-2xl bg-card border border-border" />,
-  },
-  {
-    id: "5",
-    name: "Liverpool",
-    code: "MX-21424",
-    industry: "RETAIL",
-    location: "SANTA FÉ, MÉXICO",
-    reason: { level: "bajo", text: "Incremento relevante en volumen de datos." },
-    score: 93,
-    logo: <div className="h-12 w-12 rounded-2xl bg-card border border-border" />,
-  },
-];
+type SummaryData = {
+  prioritized_companies: number;
+  total_analyses: number;
+  opportunities_detected: number;
+  analyses_this_week: number;
+};
 
 function levelStyles(level: AccountItem["reason"]["level"]) {
   if (level === "critico") return { bar: "bg-error", dot: "bg-error", text: "text-error" };
@@ -82,7 +27,37 @@ function levelStyles(level: AccountItem["reason"]["level"]) {
 }
 
 export default function DashboardNewLayout() {
-  const today = useMemo(() => "28 de febrero del 2026", []);
+  const today = useMemo(() => {
+    return new Intl.DateTimeFormat("es-MX", {
+      day: "numeric",
+      month: "long",
+      year: "numeric"
+    }).format(new Date());
+  }, []);
+
+  const [summary, setSummary] = useState<SummaryData | null>(null);
+  const [topAccounts, setTopAccounts] = useState<AccountItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadDashboardData() {
+      try {
+        const [sumRes, topRes] = await Promise.all([
+          fetchWithAuth("/dashboard/summary"),
+          fetchWithAuth("/dashboard/top-accounts")
+        ]);
+
+        if (sumRes.ok) setSummary(await sumRes.json());
+        if (topRes.ok) setTopAccounts(await topRes.json());
+      } catch (err) {
+        console.error("Error loading dashboard data:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadDashboardData();
+  }, []);
 
   return (
     <AppShell>
@@ -90,7 +65,7 @@ export default function DashboardNewLayout() {
         {/* Header */}
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <h1 className="text-3xl font-semibold tracking-tight">Buenos días, Alex.</h1>
+            <h1 className="text-3xl font-semibold tracking-tight">Buenos días.</h1>
             <p className="mt-1 text-sm text-text-secondary">
               Aquí tienes tu hoja de ruta estratégica para hoy, {today}.
             </p>
@@ -104,9 +79,21 @@ export default function DashboardNewLayout() {
 
         {/* KPI */}
         <div className="mt-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-          <KpiCard value="5" label="CUENTAS PRIORIZADAS" icon={<DocIcon className="text-brand" />} />
-          <KpiCard value="12" label="OPORTUNIDADES DETECTADAS" icon={<BoltIcon className="text-info" />} />
-          <KpiCard value="7" label="ANÁLISIS ESTA SEMANA" icon={<CalendarIcon className="text-info" />} />
+          <KpiCard
+            value={summary?.prioritized_companies.toString() || "0"}
+            label="CUENTAS PRIORIZADAS"
+            icon={<DocIcon className="text-brand" />}
+          />
+          <KpiCard
+            value={summary?.opportunities_detected.toString() || "0"}
+            label="OPORTUNIDADES DETECTADAS"
+            icon={<BoltIcon className="text-info" />}
+          />
+          <KpiCard
+            value={summary?.analyses_this_week.toString() || "0"}
+            label="ANÁLISIS ESTA SEMANA"
+            icon={<CalendarIcon className="text-info" />}
+          />
         </div>
 
         {/* Section */}
@@ -119,58 +106,73 @@ export default function DashboardNewLayout() {
 
         {/* Rows */}
         <div className="mt-4 space-y-3">
-          {accounts.map((a) => {
-            const s = levelStyles(a.reason.level);
+          {loading ? (
+            <div className="p-10 text-center text-text-muted">Cargando cuentas prioritarias...</div>
+          ) : topAccounts.length === 0 ? (
+            <div className="p-10 text-center text-text-muted rounded-2xl border border-dashed border-border">
+              No hay cuentas analizadas aún. Comienza creando un nuevo análisis.
+            </div>
+          ) : (
+            topAccounts.map((a) => {
+              const s = levelStyles(a.reason.level);
 
-            return (
-              <div key={a.id} className="relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-                <div className={`absolute left-0 top-0 h-full w-1.5 ${s.bar}`} />
+              return (
+                <div key={a.id} className="relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                  <div className={`absolute left-0 top-0 h-full w-1.5 ${s.bar}`} />
 
-                <div className="grid gap-4 p-4 lg:grid-cols-[480px_1fr_220px] xl:grid-cols-[560px_1fr_240px] lg:items-center lg:gap-6 lg:p-5">
-                  {/* Left */}
-                  <div className="flex min-w-0 items-center gap-4">
-                    {a.logo}
+                  <div className="grid gap-4 p-4 lg:grid-cols-[480px_1fr_220px] xl:grid-cols-[560px_1fr_240px] lg:items-center lg:gap-6 lg:p-5">
+                    {/* Left */}
+                    <div className="flex min-w-0 items-center gap-4">
+                      <div className="h-12 w-12 rounded-2xl bg-card grid place-items-center border border-border">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="text-brand">
+                          <path
+                            d="M10 3h4a2 2 0 0 1 2 2v2h2a2 2 0 0 1 2 2v4h-2V11H4v10h8v2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V5a2 2 0 0 1 2-2Z"
+                            fill="currentColor"
+                          />
+                        </svg>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate text-lg font-semibold">{a.name}</div>
+                        <div className="text-xs text-text-muted">ID: #{a.code}</div>
+                      </div>
+
+                      <div className="ml-auto hidden items-center gap-6 text-xs text-text-muted lg:flex">
+                        <span className="inline-flex items-center gap-1.5">
+                          <BuildingIcon />
+                          {a.industry}
+                        </span>
+                        <span className="inline-flex items-center gap-1.5">
+                          <PinIcon />
+                          {a.location}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Reason */}
                     <div className="min-w-0">
-                      <div className="truncate text-lg font-semibold">{a.name}</div>
-                      <div className="text-xs text-text-muted">ID: #{a.code}</div>
+                      <div className="text-[11px] font-semibold tracking-wide text-text-muted">MOTIVO DE PRIORIZACIÓN</div>
+                      <div className="mt-1 flex items-start gap-2 text-sm font-semibold">
+                        <span className={`mt-1 inline-block h-2.5 w-2.5 rounded-full ${s.dot}`} />
+                        <span className={`break-words ${s.text}`}>{a.reason.text}</span>
+                      </div>
                     </div>
 
-                    <div className="ml-auto hidden items-center gap-6 text-xs text-text-muted lg:flex">
-                      <span className="inline-flex items-center gap-1.5">
-                        <BuildingIcon />
-                        {a.industry}
-                      </span>
-                      <span className="inline-flex items-center gap-1.5">
-                        <PinIcon />
-                        {a.location}
-                      </span>
-                    </div>
-                  </div>
+                    {/* Score */}
+                    <div className="flex items-center justify-between gap-4 lg:justify-end">
+                      <div className="text-right">
+                        <div className="text-[11px] font-semibold tracking-wide text-text-muted">SCORE</div>
+                        <div className="text-3xl font-semibold text-brand">{a.score}</div>
+                      </div>
 
-                  {/* Reason */}
-                  <div className="min-w-0">
-                    <div className="text-[11px] font-semibold tracking-wide text-text-muted">MOTIVO DE PRIORIZACIÓN</div>
-                    <div className="mt-1 flex items-start gap-2 text-sm font-semibold">
-                      <span className={`mt-1 inline-block h-2.5 w-2.5 rounded-full ${s.dot}`} />
-                      <span className={`break-words ${s.text}`}>{a.reason.text}</span>
+                      <button className="h-10 rounded-xl bg-brand px-4 text-sm font-semibold text-white hover:bg-brand-dark active:translate-y-px">
+                        Ver detalles
+                      </button>
                     </div>
-                  </div>
-
-                  {/* Score */}
-                  <div className="flex items-center justify-between gap-4 lg:justify-end">
-                    <div className="text-right">
-                      <div className="text-[11px] font-semibold tracking-wide text-text-muted">SCORE</div>
-                      <div className="text-3xl font-semibold text-brand">{a.score}</div>
-                    </div>
-
-                    <button className="h-10 rounded-xl bg-brand px-4 text-sm font-semibold text-white hover:bg-brand-dark active:translate-y-px">
-                      Ver detalles
-                    </button>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       </div>
     </AppShell>
