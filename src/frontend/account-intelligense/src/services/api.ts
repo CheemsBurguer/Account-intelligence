@@ -50,7 +50,7 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
             }
         }
 
-        // If no refresh token or refresh failed
+
         isRefreshing = false;
         localStorage.removeItem("access_token");
         localStorage.removeItem("refresh_token");
