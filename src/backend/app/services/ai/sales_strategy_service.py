@@ -17,7 +17,7 @@ class SalesStrategyService:
         self.db = db  # AsyncSession
         self.llm_client = LLMClient()
 
-    async def generate_for_analysis(self, analysis_id: int):
+    def generate_for_analysis(self, analysis_id: int):
 
         logger.info(f"[SalesStrategy] Generating for analysis_id={analysis_id}")
 
@@ -25,7 +25,7 @@ class SalesStrategyService:
         # Get analysis (async)
         # --------------------------------------------------
 
-        analysis = await self.db.get(Analysis, analysis_id)
+        analysis = self.db.get(Analysis, analysis_id)
         if not analysis:
             raise ValueError("Analysis not found")
 
@@ -34,7 +34,7 @@ class SalesStrategyService:
         # This ensures recommendations belong to this analysis
         # --------------------------------------------------
 
-        result = await self.db.execute(
+        result = self.db.execute(
             select(Recommendation)
             .join(Insight, Recommendation.insight_id == Insight.id)
             .where(
@@ -56,7 +56,7 @@ class SalesStrategyService:
         accepted_products = []
 
         for r in accepted_recommendations:
-            product = await self.db.get(HPEProduct, r.product_id)
+            product = self.db.get(HPEProduct, r.product_id)
             if not product:
                 continue
 
@@ -72,7 +72,7 @@ class SalesStrategyService:
         # Get insights
         # --------------------------------------------------
 
-        result = await self.db.execute(
+        result = self.db.execute(
             select(Insight)
             .where(Insight.analysis_id == analysis_id)
         )
@@ -122,7 +122,7 @@ class SalesStrategyService:
         # Ensures only ONE strategy per analysis
         # --------------------------------------------------
 
-        result = await self.db.execute(
+        result = self.db.execute(
             select(SalesStrategy)
             .where(SalesStrategy.analysis_id == analysis_id)
         )
@@ -172,7 +172,7 @@ class SalesStrategyService:
 
             self.db.add(strategy)
 
-        await self.db.commit()
+        self.db.commit()
 
         logger.info(f"[SalesStrategy] Completed for analysis_id={analysis_id}")
 

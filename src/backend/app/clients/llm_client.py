@@ -38,23 +38,16 @@ class LLMClient:
         prompt: str,
         output_schema: Type[BaseModel],
     ) -> BaseModel:
-        """
-        Generate structured output validated by Pydantic schema.
-        """
 
         parser = PydanticOutputParser(pydantic_object=output_schema)
 
-        formatted_prompt = PromptTemplate(
-            template=prompt + "\n\n{format_instructions}",
-            input_variables=[],
-            partial_variables={
-                "format_instructions": parser.get_format_instructions()
-            },
+        full_prompt = (
+            prompt
+            + "\n\n"
+            + parser.get_format_instructions()
         )
 
-        final_prompt = formatted_prompt.format()
-
-        response = self._llm.invoke(final_prompt)
+        response = self._llm.invoke(full_prompt)
 
         return parser.parse(response.content)
     

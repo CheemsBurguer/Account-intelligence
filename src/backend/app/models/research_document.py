@@ -10,7 +10,7 @@ class ResearchDocument(Base):
     analysis_id = Column(Integer, ForeignKey("analyses.id"))
 
     source_type = Column(String(50))  # tavily, scraping, manual
-    source_url = Column(String(500))
+    source_url = Column(Text)
     title = Column(String(255))
 
     relevance_score = Column(Float, nullable=True)

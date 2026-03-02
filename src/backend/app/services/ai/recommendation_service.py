@@ -1,5 +1,5 @@
 import logging
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from ...models.insight import Insight
 from ...models.recommendation import Recommendation
 from ...models.hpe_product import HPEProduct
@@ -282,5 +282,98 @@ class RecommendationService:
             )
 
         self.db.commit()
+
+
+        # --------------------------------------------------
+        # PROPENSITY SCORE CALCULATION
+        # --------------------------------------------------
+
+        analysis = self.db.get(Analysis, insight.analysis_id)
+
+        # Strategic component
+        strategic_component = (analysis.strategic_score or 0) / 100
+
+        # Urgency component (insight severity)
+        severity_weight_map = {
+            "high": 1.0,
+            "medium": 0.6,
+            "low": 0.3
+        }
+
+        insight_result = self.db.execute(
+            select(Insight.severity)
+            .where(Insight.analysis_id == analysis.id)
+        )
+
+        severities = insight_result.scalars().all()
+
+        if severities:
+            urgency_component = sum(
+                severity_weight_map.get(s.lower(), 0.3)
+                for s in severities
+            ) / len(severities)
+        else:
+            urgency_component = 0
+
+        # Product fit component
+        fit_result = self.db.execute(
+            select(Recommendation.final_score)
+            .join(Insight)
+            .where(Insight.analysis_id == analysis.id)
+        )
+
+        fit_scores = fit_result.scalars().all()
+
+        product_fit_component = (
+            sum(fit_scores) / len(fit_scores)
+            if fit_scores else 0
+        )
+
+        # Confidence component
+        conf_result = self.db.execute(
+            select(Recommendation.confidence_score)
+            .join(Insight)
+            .where(Insight.analysis_id == analysis.id)
+        )
+
+        confidence_scores = conf_result.scalars().all()
+
+        confidence_component = (
+            sum(confidence_scores) / len(confidence_scores)
+            if confidence_scores else 0
+        )
+
+        # Engagement component
+        accepted_result = self.db.execute(
+            select(Recommendation.is_accepted)
+            .join(Insight)
+            .where(Insight.analysis_id == analysis.id)
+        )
+
+        accepted_list = accepted_result.scalars().all()
+
+        if accepted_list:
+            engagement_component = (
+                sum(1 for x in accepted_list if x) / len(accepted_list)
+            )
+        else:
+            engagement_component = 0
+
+        # Final weighted formula
+        propensity = (
+            0.35 * strategic_component +
+            0.20 * urgency_component +
+            0.20 * product_fit_component +
+            0.15 * confidence_component +
+            0.10 * engagement_component
+        )
+
+        analysis.propensity_score = round(propensity * 100, 2)
+
+        self.db.commit()
+
+        logger.info(
+            f"[Recommendation] Updated propensity_score={analysis.propensity_score}"
+        )
 
         logger.info(f"[Recommendation] Completed for insight_id={insight_id}")

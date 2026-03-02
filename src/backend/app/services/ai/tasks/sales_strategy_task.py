@@ -1,5 +1,5 @@
 from ....core.celery_app import celery
-from ....db.database import sessionLocal
+from ....db.database import SyncSessionLocal
 from ..sales_strategy_service import SalesStrategyService
 from ....models.analysis import Analysis
 from ....models.enums import AnalysisStatus
@@ -7,18 +7,26 @@ from ....models.enums import AnalysisStatus
 @celery.task(bind=True)
 def run_sales_strategy(self, analysis_id: int):
 
-    async def _run():
+    db = SyncSessionLocal()
 
-        async with sessionLocal() as db:
+    try:
+        service = SalesStrategyService(db)
 
-            service = SalesStrategyService(db)
+        service.generate_for_analysis(analysis_id)
 
-            await service.generate_for_analysis(analysis_id)
+        analysis = db.get(Analysis, analysis_id)
+        analysis.status = AnalysisStatus.COMPLETED
 
-            # Mark analysis as completed
-            analysis = await db.get(Analysis, analysis_id)
-            analysis.status = AnalysisStatus.COMPLETED
-            await db.commit()
+        db.commit()
 
-    import asyncio
-    asyncio.run(_run())
+    except Exception as e:
+        analysis = db.get(Analysis, analysis_id)
+        if analysis:
+            analysis.status = AnalysisStatus.FAILED
+            analysis.error_message = str(e)
+            analysis.error_stage = "sales_strategy_generation"
+            db.commit()
+        raise e
+
+    finally:
+        db.close()
