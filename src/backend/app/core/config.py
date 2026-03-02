@@ -5,7 +5,7 @@ Reads from environment variables (.env file).
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
-
+from pydantic import field_validator
 
 class Settings(BaseSettings):
     # ── Application ───────────────────────────────────────────────────────────
@@ -32,9 +32,23 @@ class Settings(BaseSettings):
     REFRESH_EXPIRE_DAYS: int
 
     # ── CORS ──────────────────────────────────────────────────────────────────
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    CORS_ORIGINS: List[str] | str = ""
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v):
+        if isinstance(v, str):
+            return [origin.strip() for origin in v.split(",") if origin]
+        return v
 
     # ── Azure OpenAI ──────────────────────────────────────────────────────────
+    AZURE_OPENAI_ENDPOINT: str
+    AZURE_OPENAI_API_KEY: str
+    AZURE_OPENAI_API_VERSION: str
+    AZURE_OPENAI_CHAT_DEPLOYMENT: str
+    AZURE_OPENAI_EMBEDDING_DEPLOYMENT: str
+
+    # ── Gemini ──────────────────────────────────────────────────────────
     GEMINI_LLM_MODEL: str
     GEMINI_API_KEY: str
     GEMINI_EMBEDDING_MODEL: str = "models/text-embedding-004"

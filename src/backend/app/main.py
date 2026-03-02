@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .api.v1.api import api_router
 import logging
+from fastapi.middleware.cors import CORSMiddleware
+from .core.config import settings
 
 logging.basicConfig(
     level=logging.INFO,
@@ -14,13 +16,13 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with the specific frontend URL
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if settings.CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 app.include_router(api_router, prefix="/api/v1")

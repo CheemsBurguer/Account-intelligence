@@ -1,20 +1,22 @@
 from typing import List
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_openai import AzureOpenAIEmbeddings
 from ..core.config import settings
 
 
 class EmbeddingClient:
     """
     Encapsulates embedding generation logic.
-    Uses Gemini embedding model via LangChain wrapper.
+    Uses embedding model via LangChain wrapper.
     """
 
     def __init__(self):
         self.model_name = settings.GEMINI_EMBEDDING_MODEL
 
-        self._embeddings = GoogleGenerativeAIEmbeddings(
-            model=self.model_name,
-            google_api_key=settings.GEMINI_API_KEY
+        self._embeddings = AzureOpenAIEmbeddings(
+            azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
+            api_key=settings.AZURE_OPENAI_API_KEY,
+            api_version=settings.AZURE_OPENAI_API_VERSION,
+            deployment=settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT,
         )
 
     def embed_text(self, text: str) -> List[float]:

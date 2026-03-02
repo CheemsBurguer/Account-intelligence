@@ -1,5 +1,5 @@
 from typing import Optional, Type
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import AzureChatOpenAI
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel
@@ -11,17 +11,19 @@ logger = logging.getLogger(__name__)
 
 class LLMClient:
     """
-    Encapsulates Gemini LLM interaction.
+    Encapsulates LLM interaction.
     Supports both free-form generation and structured output.
     """
 
     def __init__(self):
         self.model_name = settings.GEMINI_LLM_MODEL
 
-        self._llm = ChatGoogleGenerativeAI(
-            model=self.model_name,
-            google_api_key=settings.GEMINI_API_KEY,
-            temperature=0.2,
+        self._llm = AzureChatOpenAI(
+            azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
+            api_key=settings.AZURE_OPENAI_API_KEY,
+            api_version=settings.AZURE_OPENAI_API_VERSION,
+            deployment_name=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
+            temperature=0.3,
         )
 
     def generate_text(self, prompt: str) -> str:

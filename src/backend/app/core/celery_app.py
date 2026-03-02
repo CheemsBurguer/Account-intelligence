@@ -18,6 +18,9 @@ celery.conf.update(
     task_time_limit=60 * 10,  # 10 min hard limit
     task_soft_time_limit=60 * 8,
     worker_max_tasks_per_child=50,
+    broker_connection_retry_on_startup=True,
+    broker_connection_retry=True,
+    broker_connection_max_retries=10,
 )
 
 celery.conf.task_default_queue = "default"

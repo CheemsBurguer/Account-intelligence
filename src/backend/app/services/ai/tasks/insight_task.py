@@ -9,6 +9,7 @@ from ....models.research_document import ResearchDocument
 from ....clients.embedding_client import EmbeddingClient
 from ....clients.pinecone_client import PineconeClient
 from ....clients.llm_client import LLMClient
+from openai import RateLimitError, APIError
 
 from ....schemas.insight import InsightItem, InsightOutput
 
@@ -31,6 +32,9 @@ def calculate_card_size(severity: str, strategic_score: int):
 def run_insights(self, analysis_id: int):
 
     db = SyncSessionLocal()
+
+    insight_ids = []
+    research_documents = []
 
     try:
         # ─────────────────────────────────────────────
@@ -164,20 +168,81 @@ def run_insights(self, analysis_id: int):
             "financial_pressure": total_fin,
         }
 
-        analysis.status = AnalysisStatus.RECOMMENDING
+        analysis.status = AnalysisStatus.ANALYSIS_COMPLETED
 
         db.commit()
 
         insight_ids = [insight.id for insight in created_insights]
 
-    except Exception as e:
+    except RateLimitError as e:
+
         analysis = db.get(Analysis, analysis_id)
+
+        if analysis:
+
+            # Generate limited fallback insights (max 2)
+            fallback_insights = []
+
+            for i, doc in enumerate(research_documents[:2]):
+
+                insight = Insight(
+                    analysis_id=analysis_id,
+                    title=f"Partial Insight {i+1} (Quota Limit Reached)",
+                    description=(doc.raw_content or "")[:800],
+                    category="General",
+                    severity="medium",
+                )
+
+                insight.card_size = "small"
+
+                db.add(insight)
+                fallback_insights.append(insight)
+
+            db.flush()
+
+            analysis.status = AnalysisStatus.RECOMMENDING
+            analysis.error_message = (
+                "LLM quota reached. "
+                "Partial insights generated (demo mode)."
+            )
+            analysis.error_stage = "insight_generation_partial"
+
+            db.commit()
+
+            insight_ids = [i.id for i in fallback_insights]
+
+        else:
+            raise e
+        
+    except APIError as e:
+
+        analysis = db.get(Analysis, analysis_id)
+
+        if analysis:
+            analysis.status = AnalysisStatus.ANALYSIS_COMPLETED
+            analysis.error_message = (
+                "Temporary AI service issue. "
+                "Fallback insights generated."
+            )
+            analysis.error_stage = "insight_generation_partial"
+            db.commit()
+
+        insight_ids = []
+
+    except APIError as e:
+
+        analysis = db.get(Analysis, analysis_id)
+
         if analysis:
             analysis.status = AnalysisStatus.FAILED
-            analysis.error_message = str(e)
-            analysis.error_stage = "insight_generation"
+            analysis.error_message = (
+                "Temporary AI service issue. "
+                "Fallback insights generated."
+            )
+            analysis.error_stage = "insight_generation_partial"
             db.commit()
-        raise e
+
+        insight_ids = []
 
     finally:
         db.close()
