@@ -30,7 +30,6 @@ const nav: NavItem[] = [
     { key: "daily", label: "Análisis Diario", icon: <GridIcon />, to: "/daily" },
     { key: "profile360", label: "Perfil de Cuenta 360°", icon: <Circle360Icon />, to: "/account-360" },
     { key: "insights", label: "Insights", icon: <BulbIcon />, to: "/insights" },
-    { key: "recs", label: "Recomendaciones", icon: <MailIcon />, to: "/recomendaciones" },
 ];
 
 const settingsNav: NavItem[] = [
