@@ -1,5 +1,6 @@
 from celery import Celery
 from ..core.config import settings
+import ssl
 
 celery = Celery(
     "HPE_Account_Intelligence",
@@ -14,6 +15,12 @@ from ..services.ai.tasks import insight_task
 from ..services.ai.tasks import recommendation_task
 
 celery.conf.update(
+    broker_use_ssl={
+        "ssl_cert_reqs": ssl.CERT_NONE
+    },
+    redis_backend_use_ssl={
+        "ssl_cert_reqs": ssl.CERT_NONE
+    },
     task_track_started=True,
     task_time_limit=60 * 10,  # 10 min hard limit
     task_soft_time_limit=60 * 8,
