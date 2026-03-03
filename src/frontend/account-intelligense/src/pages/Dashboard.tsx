@@ -141,8 +141,10 @@ export default function DashboardNewLayout() {
                         </svg>
                       </div>
                       <div className="min-w-0">
-                        <div className="truncate text-lg font-semibold">{a.name}</div>
-                        <div className="text-xs text-text-muted">ID: #{a.code}</div>
+                        <div className="truncate text-lg font-semibold">{a.company_name}</div>
+                        <div className="text-xs text-text-muted">
+                          ID: #{a.company_id}
+                        </div>
                       </div>
 
                       <div className="ml-auto hidden items-center gap-6 text-xs text-text-muted lg:flex">
@@ -152,7 +154,7 @@ export default function DashboardNewLayout() {
                         </span>
                         <span className="inline-flex items-center gap-1.5">
                           <PinIcon />
-                          {a.location}
+                          N/A
                         </span>
                       </div>
                     </div>
