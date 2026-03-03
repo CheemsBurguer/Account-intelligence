@@ -80,17 +80,17 @@ export default function DashboardNewLayout() {
         {/* KPI */}
         <div className="mt-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           <KpiCard
-            value={summary?.prioritized_companies.toString() || "0"}
+            value={String(summary?.prioritized_companies ?? 0)}
             label="CUENTAS PRIORIZADAS"
             icon={<DocIcon className="text-brand" />}
           />
           <KpiCard
-            value={summary?.opportunities_detected.toString() || "0"}
+            value={String(summary?.opportunities_detected ?? 0)}
             label="OPORTUNIDADES DETECTADAS"
             icon={<BoltIcon className="text-info" />}
           />
           <KpiCard
-            value={summary?.analyses_this_week.toString() || "0"}
+            value={String(summary?.analyses_this_week ?? 0)}
             label="ANÁLISIS ESTA SEMANA"
             icon={<CalendarIcon className="text-info" />}
           />
