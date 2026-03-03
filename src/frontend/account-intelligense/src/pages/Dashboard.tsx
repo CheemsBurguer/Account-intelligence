@@ -114,7 +114,16 @@ export default function DashboardNewLayout() {
             </div>
           ) : (
             topAccounts.map((a) => {
-              const s = levelStyles(a.reason.level);
+              const level =
+                a.score >= 80
+                  ? "critico"
+                  : a.score >= 60
+                  ? "alto"
+                  : a.score >= 40
+                  ? "medio"
+                  : "bajo";
+
+              const s = levelStyles(level);
 
               return (
                 <div key={a.id} className="relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
@@ -153,7 +162,9 @@ export default function DashboardNewLayout() {
                       <div className="text-[11px] font-semibold tracking-wide text-text-muted">MOTIVO DE PRIORIZACIÓN</div>
                       <div className="mt-1 flex items-start gap-2 text-sm font-semibold">
                         <span className={`mt-1 inline-block h-2.5 w-2.5 rounded-full ${s.dot}`} />
-                        <span className={`break-words ${s.text}`}>{a.reason.text}</span>
+                        <span className={`break-words ${s.text}`}>
+                          Score calculado automáticamente
+                        </span>
                       </div>
                     </div>
 
