@@ -1,11 +1,9 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import AppShell from "../../components/layout/AppShell"; // <-- ajusta
 import { Search, ChevronDown, X } from "lucide-react";
 import { InsightCardTile } from "../../components/ui/InsightCard";
 import type { InsightCardDTO } from "../../types/insights"; // ajusta ruta
-
-
-const cx = (...c: Array<string | false | undefined | null>) => c.filter(Boolean).join(" ");
+import { fetchWithAuth } from "../../services/api";
 
 function Select({
     label,
@@ -59,24 +57,24 @@ export default function StrategicInsightsPage() {
         const fetchCards = async () => {
             setLoading(true);
             try {
-                // TODO: cambia por tu endpoint real
-                // const res = await fetch(`/api/insights?impacto=${impacto}&area=${area}&prop=${propension}&order=${ordenarPor}&q=${smartQuery}`);
-                // const json = await res.json();
-                // setCards(json);
-
-                // Placeholder: varias cards vacías para probar layout (como tu screenshot)
-                setCards([null, null, null, null, null, null]);
+                const res = await fetchWithAuth("/insights/");
+                if (res.ok) {
+                    const json = await res.json();
+                    setCards(json);
+                } else {
+                    console.error("Failed to fetch insights");
+                    setCards([]);
+                }
+            } catch (err) {
+                console.error("Error loading insights:", err);
+                setCards([]);
             } finally {
                 setLoading(false);
             }
         };
 
         fetchCards();
-        // Si quieres que recargue con filtros/búsqueda, agrega dependencias:
     }, []);
-
-    // Si quieres que el endpoint se dispare al cambiar filtros:
-    // useEffect(() => { fetchCards() }, [impacto, area, propension, ordenarPor, smartQuery])
 
     return (
         <AppShell>

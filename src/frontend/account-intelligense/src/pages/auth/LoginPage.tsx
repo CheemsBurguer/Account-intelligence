@@ -1,12 +1,27 @@
-import React from "react";
-import { Link } from "react-router-dom";
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { API_BASE_URL } from "../../services/api";
 
-export default function LoginPage({ onNavigate }: { onNavigate?: (page: "login" | "signup" | "dashboard") => void }) {
+export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const navigate = useNavigate();
+  const location = useLocation();
+  const successMessage = location.state?.successMessage;
+
+  const [showSuccess, setShowSuccess] = useState(!!successMessage);
+
+  useEffect(() => {
+    if (successMessage) {
+      setError("");
+      setShowSuccess(true);
+      const timer = setTimeout(() => setShowSuccess(false), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,7 +33,7 @@ export default function LoginPage({ onNavigate }: { onNavigate?: (page: "login" 
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:8000/api/v1/auth/signin", {
+      const res = await fetch(`${API_BASE_URL}/auth/signin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -31,7 +46,7 @@ export default function LoginPage({ onNavigate }: { onNavigate?: (page: "login" 
 
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("refresh_token", data.refresh_token);
-      if (onNavigate) onNavigate("dashboard");
+      navigate("/daily");
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -96,6 +111,11 @@ export default function LoginPage({ onNavigate }: { onNavigate?: (page: "login" 
             </p>
 
             <form className="mt-10 space-y-6" onSubmit={handleLogin}>
+              {showSuccess && (
+                <div className="rounded-md bg-emerald-50 p-4 text-sm text-emerald-700">
+                  {successMessage}
+                </div>
+              )}
               {error && (
                 <div className="rounded-md bg-red-50 p-4 text-sm text-red-700">
                   {error}
@@ -155,15 +175,15 @@ export default function LoginPage({ onNavigate }: { onNavigate?: (page: "login" 
               </div>
 
               <div className="rounded-md bg-slate-100 px-6 py-4">
-              <p className="text-sm text-gray-500">
-                Don't have an account?{" "}
-                <Link
-                  to="/signup"
-                  className="text-primary font-semibold hover:underline"
-                >
-                  Sign Up
-                </Link>
-              </p>
+                <p className="text-sm text-gray-500">
+                  Don't have an account?{" "}
+                  <Link
+                    to="/signup"
+                    className="text-primary font-semibold hover:underline"
+                  >
+                    Sign Up
+                  </Link>
+                </p>
               </div>
             </form>
           </div>

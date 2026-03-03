@@ -64,7 +64,7 @@ services:
       interval: 5s
       retries: 5
       start_period: 10s
-  
+
   redis:
     image: redis:7-alpine
     container_name: ai_redis
@@ -86,9 +86,7 @@ services:
       - redis
       - db
     command: >
-      celery -A app.core.celery_app.celery worker
-      --loglevel=info
-      --concurrency=2
+      celery -A app.core.celery_app.celery worker --loglevel=info --concurrency=2
     networks:
       - ai_network
     volumes:
@@ -98,7 +96,6 @@ services:
       - ./alembic.ini:/app/alembic.ini
     environment:
       PYTHONPATH: /app
-
 
   flower:
     build:

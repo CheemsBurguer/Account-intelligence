@@ -1,6 +1,6 @@
-import React from "react";
-import { Link } from "react-router-dom";
-import { useState } from "react";
+import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { API_BASE_URL } from "../../services/api";
 
 const REGIONS = [
   "North America",
@@ -18,7 +18,7 @@ const REGION_MAP: Record<string, number> = {
   "Global": 5,
 };
 
-export default function SignUpPage({ onNavigate }: { onNavigate?: (page: "login" | "signup" | "dashboard") => void }) {
+export default function SignUpPage() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [region, setRegion] = useState("");
@@ -27,6 +27,8 @@ export default function SignUpPage({ onNavigate }: { onNavigate?: (page: "login"
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const navigate = useNavigate();
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,7 +45,7 @@ export default function SignUpPage({ onNavigate }: { onNavigate?: (page: "login"
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:8000/api/v1/auth/signup", {
+      const res = await fetch(`${API_BASE_URL}/auth/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -73,10 +75,8 @@ export default function SignUpPage({ onNavigate }: { onNavigate?: (page: "login"
         throw new Error(errorMessage);
       }
 
-      // Guardar tokens y redirigir
-      localStorage.setItem("access_token", data.access_token);
-      localStorage.setItem("refresh_token", data.refresh_token);
-      if (onNavigate) onNavigate("dashboard");
+      // Redirigir al inicio de sesión con estado
+      navigate("/login", { state: { successMessage: "Se creó la cuenta exitosamente, inicia sesión." } });
     } catch (err: any) {
       setError(err.message);
     } finally {
