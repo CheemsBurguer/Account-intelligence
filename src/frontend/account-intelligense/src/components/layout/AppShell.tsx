@@ -15,9 +15,6 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { fetchWithAuth } from "../../services/api";
 
-import logoDark from "HPE_logoWhite.png";
-import logoLight from "logo_HPE.png";
-
 type NavItem = {
     key: string;
     label: string;
@@ -183,7 +180,7 @@ function Sidebar({
                     <div>
                         <div className="text-4xl font-black tracking-tight">
                             <img
-                                src={isDark ? logoDark : logoLight}
+                                src={isDark ? "/HPE_logoWhite.png" : "/logo_HPE.png"}
                                 alt="HPE Logo"
                                 className="h-10 w-auto transition-all duration-300"
                             />
