@@ -50,7 +50,7 @@ export default function StrategicInsightsPage() {
     const [smartQuery, setSmartQuery] = useState("");
 
     // data
-    const [cards, setCards] = useState<Array<InsightCardDTO | null>>([]);
+    const [cards, setCards] = useState<InsightCardDTO[]>([]);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
@@ -149,8 +149,8 @@ export default function StrategicInsightsPage() {
             {/* GRID DE CARDS (como tu diseño, NO full screen) */}
             <div className="mt-6">
                 <div className="grid items-start gap-6 sm:grid-cols-2 xl:grid-cols-3">
-                    {cards.map((c, idx) => (
-                        <InsightCardTile key={c?.id ?? `empty-${idx}`} data={c} loading={loading} />
+                    {cards.map((c) => (
+                        <InsightCardTile key={c.id} data={c} loading={loading} />
                     ))}
                 </div>
             </div>

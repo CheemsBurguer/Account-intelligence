@@ -48,37 +48,13 @@ export function InsightCardTile({
 
     // ✅ safe fallbacks (evita undefined% y textos raros)
     const safe = useMemo(() => {
-        // 👇 Esto evita que TS lo trate como {}
-        const d: Partial<InsightCardDTO> = data ?? {};
-
-        const propensity =
-            typeof d.propensityValue === "number" && Number.isFinite(d.propensityValue)
-                ? `${Math.round(d.propensityValue)}%`
-                : "—%";
-
-        const tone = d.impactTag?.tone ?? "baja";
-        const impactLabel = d.impactTag?.label ?? "—";
-
-        const factors: Factor[] =
-            d.factors ??
-            [
-                { label: "—", level: "ALTA" },
-                { label: "—", level: "ALTA" },
-                { label: "—", level: "MEDIA" },
-            ];
-
+        const d = data;
+        
         return {
-            id: d.id ?? "empty",
-            category: d.category ?? "—",
-            title: d.title ?? "Título (vacío)",
-            quote: d.quote ?? "“—”",
-            opportunityTitle: d.opportunityTitle ?? "OPORTUNIDAD HPE",
-            opportunityBody: d.opportunityBody ?? "Descripción (vacía)",
-            detectedAt: d.detectedAt ?? "Detectada: —",
-            impactLabel,
-            tone,
-            propensity,
-            factors,
+            id: d?.id ?? 0,
+            title: d?.title ?? "Título (vacío)",
+            description: d?.description ?? "Descripción (vacía)",
+            severity: d?.severity ?? "low",
         };
     }, [data]);
 
@@ -127,10 +103,10 @@ export function InsightCardTile({
                         <div className="w-1 rounded-full bg-emerald-600" />
                         <div className="min-w-0">
                             <div className="text-sm font-extrabold tracking-wide text-emerald-700">
-                                {safe.opportunityTitle}
+                                OPORTUNIDAD HPE
                             </div>
                             <div className="mt-1 text-sm leading-relaxed text-slate-700">
-                                {safe.opportunityBody}
+                                {safe.description}
                             </div>
                         </div>
                     </div>
