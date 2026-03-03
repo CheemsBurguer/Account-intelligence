@@ -112,14 +112,6 @@ export default function DashboardNewLayout() {
             </div>
           ) : (
             topAccounts.map((a) => {
-              const level =
-                a.score >= 80
-                  ? "critico"
-                  : a.score >= 60
-                  ? "alto"
-                  : a.score >= 40
-                  ? "medio"
-                  : "bajo";
 
               const s = levelStyles(a.score);
 
