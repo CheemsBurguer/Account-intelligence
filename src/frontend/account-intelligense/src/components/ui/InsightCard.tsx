@@ -10,18 +10,7 @@ import {
     ArrowUp,
 } from "lucide-react";
 
-export type InsightCardDTO = {
-    id: string;
-    category?: string;
-    title?: string;
-    quote?: string;
-    opportunityTitle?: string;
-    opportunityBody?: string;
-    propensityValue?: number; // puede venir undefined
-    impactTag?: { label?: string; tone?: "critica" | "alta" | "media" | "baja" };
-    detectedAt?: string;
-    factors?: Array<{ label: string; level: "ALTA" | "MEDIA" | "BAJA" }>;
-};
+import type { InsightCardDTO } from "../../types/insights";
 
 const cx = (...c: Array<string | false | undefined | null>) => c.filter(Boolean).join(" ");
 
@@ -44,17 +33,38 @@ export function InsightCardTile({
     onWorkWithAI?: () => void;
 }) {
     const [openFactors, setOpenFactors] = useState(true);
-    type Factor = { label: string; level: "ALTA" | "MEDIA" | "BAJA" };
 
     // ✅ safe fallbacks (evita undefined% y textos raros)
     const safe = useMemo(() => {
         const d = data;
-        
+
+        const severityMap: Record<string, { label: string; tone: "critica" | "alta" | "media" | "baja" }> = {
+            critical: { label: "CRÍTICA", tone: "critica" },
+            high: { label: "ALTA", tone: "alta" },
+            medium: { label: "MEDIA", tone: "media" },
+            low: { label: "BAJA", tone: "baja" },
+        };
+
+        const mappedSeverity = d?.severity
+            ? severityMap[d.severity]
+            : { label: "-", tone: "baja" };
+
         return {
             id: d?.id ?? 0,
-            title: d?.title ?? "Título (vacío)",
-            description: d?.description ?? "Descripción (vacía)",
-            severity: d?.severity ?? "low",
+            category: "-",
+            title: d?.title ?? "-",
+            quote: "-",
+            opportunityTitle: "OPORTUNIDAD HPE",
+            opportunityBody: d?.description ?? "-",
+            detectedAt: "-",
+            impactLabel: mappedSeverity.label,
+            tone: mappedSeverity.tone,
+            propensity: "-%",
+            factors: [
+                { label: "-", level: "ALTA" },
+                { label: "-", level: "MEDIA" },
+                { label: "-", level: "BAJA" },
+            ],
         };
     }, [data]);
 
