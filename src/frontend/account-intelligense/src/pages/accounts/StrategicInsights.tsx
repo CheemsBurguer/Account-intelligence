@@ -57,7 +57,7 @@ export default function StrategicInsightsPage() {
         const fetchCards = async () => {
             setLoading(true);
             try {
-                const res = await fetchWithAuth("/insights/");
+                const res = await fetchWithAuth("/insights/insights/");
                 if (res.ok) {
                     const json = await res.json();
                     setCards(json);

@@ -15,8 +15,8 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { fetchWithAuth } from "../../services/api";
 
-import logoDark from "../../assets/brand/HPE_logoWhite.png";
-import logoLight from "../../assets/brand/logo_HPE.png";
+import logoDark from "HPE_logoWhite.png";
+import logoLight from "logo_HPE.png";
 
 type NavItem = {
     key: string;

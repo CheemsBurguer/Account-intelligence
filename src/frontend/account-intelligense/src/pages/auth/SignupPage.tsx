@@ -91,14 +91,14 @@ export default function SignUpPage() {
         <section className="relative hidden lg:block">
           <div
             className="absolute inset-0 bg-cover bg-center"
-            style={{ backgroundImage: "url(src/assets/brand/HPE_imgBuilding.png)" }}
+            style={{ backgroundImage: "url(HPE_imgBuilding.png)" }}
           />
           <div className="absolute inset-0 bg-slate-900/60" />
 
           <div className="relative flex h-full flex-col justify-end p-12">
             <div className="max-w-xl text-white">
               <div className="text-5xl font-semibold leading-none tracking-tight">
-                <img src="src/assets/brand/HPE_logoWhite.png" alt="HPE_logo" />
+                <img src="HPE_logoWhite.png" alt="HPE_logo" />
               </div>
               <div className="mt-2 text-3xl font-semibold tracking-tight">
                 Account Intelligence

@@ -62,7 +62,7 @@ export default function LoginPage() {
           {/* Background image */}
           <div
             className="absolute inset-0 bg-cover bg-center"
-            style={{ backgroundImage: "url(src/assets/brand/HPE_imgBuilding.png)" }}
+            style={{ backgroundImage: "url(HPE_imgBuilding.png)" }}
           />
           {/* Dark overlay */}
           <div className="absolute inset-0 bg-slate-900/60" />
@@ -72,7 +72,7 @@ export default function LoginPage() {
             <div className="max-w-xl">
               <div className="text-white">
                 <div className="text-5xl font-semibold leading-none tracking-tight">
-                  <img src="src/assets/brand/HPE_logoWhite.png" alt="Logo_HPE" />
+                  <img src="HPE_logoWhite.png" alt="Logo_HPE" />
                 </div>
                 <div className="mt-2 text-3xl font-semibold tracking-tight">
                   Account Intelligence
