@@ -425,10 +425,6 @@ function Circle360Icon() {
     return <Rotate3d size={18} className="text-text-secondary" />;
 }
 
-function MailIcon() {
-    return <Mail size={18} className="text-text-secondary" />;
-}
-
 function UserIcon() {
     return <User size={18} className="text-text-secondary" />;
 }
