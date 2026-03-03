@@ -3,12 +3,10 @@ import AppShell from "../components/layout/AppShell"; // ✅ AJUSTA ESTA RUTA a 
 import { fetchWithAuth } from "../services/api";
 
 type AccountItem = {
-  id: string;
-  name: string;
-  code: string;
+  analysis_id: number;
+  company_id: number;
+  company_name: string;
   industry: string;
-  location: string;
-  reason: { level: "critico" | "alto" | "medio" | "bajo"; text: string };
   score: number;
 };
 
@@ -126,7 +124,7 @@ export default function DashboardNewLayout() {
               const s = levelStyles(level);
 
               return (
-                <div key={a.id} className="relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                <div key={a.analysis_id} className="relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
                   <div className={`absolute left-0 top-0 h-full w-1.5 ${s.bar}`} />
 
                   <div className="grid gap-4 p-4 lg:grid-cols-[480px_1fr_220px] xl:grid-cols-[560px_1fr_240px] lg:items-center lg:gap-6 lg:p-5">
