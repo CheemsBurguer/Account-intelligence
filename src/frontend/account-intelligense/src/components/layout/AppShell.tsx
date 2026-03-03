@@ -9,7 +9,6 @@ import {
     LayoutGrid,
     Lightbulb,
     Rotate3d,
-    Mail,
     User,
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
