@@ -17,10 +17,10 @@ type SummaryData = {
   analyses_this_week: number;
 };
 
-function levelStyles(level: AccountItem["reason"]["level"]) {
-  if (level === "critico") return { bar: "bg-error", dot: "bg-error", text: "text-error" };
-  if (level === "alto") return { bar: "bg-warning", dot: "bg-warning", text: "text-warning" };
-  if (level === "medio") return { bar: "bg-success", dot: "bg-success", text: "text-success" };
+function levelStyles(score: number) {
+  if (score >= 80) return { bar: "bg-error", dot: "bg-error", text: "text-error" };
+  if (score >= 60) return { bar: "bg-warning", dot: "bg-warning", text: "text-warning" };
+  if (score >= 40) return { bar: "bg-success", dot: "bg-success", text: "text-success" };
   return { bar: "bg-text-disabled", dot: "bg-text-disabled", text: "text-text-secondary" };
 }
 
@@ -121,7 +121,7 @@ export default function DashboardNewLayout() {
                   ? "medio"
                   : "bajo";
 
-              const s = levelStyles(level);
+              const s = levelStyles(a.score);
 
               return (
                 <div key={a.analysis_id} className="relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
