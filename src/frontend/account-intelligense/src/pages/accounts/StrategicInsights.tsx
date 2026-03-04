@@ -60,7 +60,20 @@ export default function StrategicInsightsPage() {
                 const res = await fetchWithAuth("/insights/");
                 if (res.ok) {
                     const json = await res.json();
-                    setCards(json);
+                    const mapped = json.map((i: any) => ({
+                      id: i.id,
+                      category: i.category,
+                      title: i.title,
+                      quote: i.quote,
+                      opportunityTitle: i.opportunityTitle,
+                      opportunityBody: i.opportunityBody,
+                      propensityValue: i.propensityValue,
+                      impactTag: i.impactTag,
+                      detectedAt: i.detectedAt,
+                      factors: i.factors ?? [],
+                    }));
+                    
+                    setCards(mapped);
                 } else {
                     console.error("Failed to fetch insights");
                     setCards([]);

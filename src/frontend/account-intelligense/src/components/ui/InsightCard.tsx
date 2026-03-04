@@ -38,33 +38,33 @@ export function InsightCardTile({
     const safe = useMemo(() => {
         const d = data;
 
-        const severityMap: Record<string, { label: string; tone: "critica" | "alta" | "media" | "baja" }> = {
-            critical: { label: "CRÍTICA", tone: "critica" },
-            high: { label: "ALTA", tone: "alta" },
-            medium: { label: "MEDIA", tone: "media" },
-            low: { label: "BAJA", tone: "baja" },
-        };
-
-        const mappedSeverity = d?.severity
-            ? severityMap[d.severity]
-            : { label: "-", tone: "baja" };
-
         return {
             id: d?.id ?? 0,
-            category: "-",
+            category: d?.category ?? "-",
             title: d?.title ?? "-",
-            quote: "-",
-            opportunityTitle: "OPORTUNIDAD HPE",
-            opportunityBody: d?.description ?? "-",
-            detectedAt: "-",
-            impactLabel: mappedSeverity.label,
-            tone: mappedSeverity.tone,
-            propensity: "-%",
-            factors: [
-                { label: "-", level: "ALTA" },
-                { label: "-", level: "MEDIA" },
-                { label: "-", level: "BAJA" },
-            ],
+            quote: d?.quote ?? "-",
+
+            opportunityTitle: d?.opportunityTitle ?? "OPORTUNIDAD HPE",
+            opportunityBody: d?.opportunityBody ?? "-",
+
+            detectedAt: d?.detectedAt
+                ? new Date(d.detectedAt).toLocaleDateString()
+                : "-",
+
+            impactLabel: d?.impactTag?.label ?? "-",
+            tone: d?.impactTag?.tone ?? "baja",
+
+            propensity: d?.propensityValue
+                ? `${Math.round(d.propensityValue)}%`
+                : "-%",
+
+            factors: d?.factors?.length
+                ? d.factors
+                : [
+                    { label: "-", level: "ALTA" },
+                    { label: "-", level: "MEDIA" },
+                    { label: "-", level: "BAJA" },
+                ],
         };
     }, [data]);
 
