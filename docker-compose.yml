@@ -25,21 +25,21 @@ services:
       PYTHONPATH: /app
 
   # ── Frontend Service (Vite/React) ─────────────────────────────
-  frontend:
-    build:
-      context: ./src/frontend/account-intelligense
-      dockerfile: Dockerfile.dev
-    container_name: ai_frontend
-    restart: unless-stopped
-    ports:
-      - "5173:5173"
-    volumes:
-      - ./src/frontend/account-intelligense:/app
-      - /app/node_modules
-    depends_on:
-      - backend
-    networks:
-      - ai_network
+  #frontend:
+  #  build:
+  #    context: ./src/frontend/account-intelligense
+  #    dockerfile: Dockerfile.dev
+  #  container_name: ai_frontend
+  #  restart: unless-stopped
+  #  ports:
+  #    - "5173:5173"
+  #  volumes:
+  #    - ./src/frontend/account-intelligense:/app
+  #    - /app/node_modules
+  #  depends_on:
+  #    - backend
+  #  networks:
+  #    - ai_network
 
   # ── Database Service (PostgreSQL) ─────────────────────────────
   db:

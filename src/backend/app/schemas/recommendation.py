@@ -6,6 +6,7 @@ class RecommendationAccept(BaseModel):
 class RecommendationResponse(BaseModel):
     id: int
     product_id: int
+    product_name: str
     match_percentage: float
     confidence_score: float
     is_accepted: bool

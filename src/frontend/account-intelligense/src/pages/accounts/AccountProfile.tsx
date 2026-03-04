@@ -376,7 +376,7 @@ export default function AccountProfile() {
                 recommendationCards: data.recommendations.map((r: any): RecommendationCardUI => ({
                   id: r.id,
                   productId: r.product_id,
-                  title: `Producto HPE #${r.product_id}`,
+                  title: r.product_name ?? `Producto HPE #${r.product_id}`,
                   need: r.reasoning || "Oportunidad estrat\u00e9gica detectada.",
                   matchPercentage: Math.round(r.match_percentage ?? 0),
                   confidenceScore: r.confidence_score ?? 0,

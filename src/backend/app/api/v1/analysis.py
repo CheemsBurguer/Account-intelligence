@@ -204,7 +204,8 @@ async def get_full_analysis(
         .options(
             selectinload(Analysis.company),
             selectinload(Analysis.insights)
-            .selectinload(Insight.recommendations),
+            .selectinload(Insight.recommendations)
+            .selectinload(Recommendation.product),
             selectinload(Analysis.sales_strategy)
         )
         .where(
@@ -240,6 +241,7 @@ async def get_full_analysis(
                 RecommendationResponse(
                     id=rec.id,
                     product_id=rec.product_id,
+                    product_name=rec.product.name if rec.product else None,
                     match_percentage=rec.match_percentage,
                     confidence_score=rec.confidence_score,
                     is_accepted=rec.is_accepted
